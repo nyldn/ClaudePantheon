@@ -318,11 +318,8 @@ setup_symlinks() {
     # Zshrc from data/scripts (user can customize)
     rm -f "${HOME_DIR}/.zshrc" && ln -sf "${DATA_DIR}/scripts/.zshrc" "${HOME_DIR}/.zshrc"
 
-    # Git config (copy, not symlink, so user can have local overrides)
-    if [ -f "${DATA_DIR}/gitconfig" ]; then
-        cp "${DATA_DIR}/gitconfig" "${HOME_DIR}/.gitconfig"
-        chown "${PUID}:${PGID}" "${HOME_DIR}/.gitconfig"
-    fi
+    # Git config symlink
+    rm -f "${HOME_DIR}/.gitconfig" && ln -sf "${DATA_DIR}/gitconfig" "${HOME_DIR}/.gitconfig"
 
     log "Symlinks configured"
 }
