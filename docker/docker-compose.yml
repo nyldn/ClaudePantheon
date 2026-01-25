@@ -1,0 +1,106 @@
+version: '3.8'
+
+# ╔═══════════════════════════════════════════════════════════╗
+# ║                    ClaudePantheon                         ║
+# ║          Persistent Claude Code Environment               ║
+# ╚═══════════════════════════════════════════════════════════╝
+
+services:
+  claudepantheon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USERNAME: claude
+        USER_UID: 1000
+        USER_GID: 1000
+    container_name: claudepantheon
+    hostname: claudepantheon
+    restart: unless-stopped
+    
+    # Environment variables
+    environment:
+      # Claude authentication (set one of these)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # Terminal settings
+      - TERM=xterm-256color
+      - COLORTERM=truecolor
+      # ttyd settings
+      - TTYD_PORT=7681
+      - TTYD_CREDENTIAL=${TTYD_CREDENTIAL:-}  # Format: username:password
+      # Session settings
+      - AUTO_CONTINUE=true  # Always continue last conversation
+      - WORKSPACE_DIR=/home/claude/workspace
+      # Timezone
+      - TZ=${TZ:-Asia/Dubai}
+    
+    # Port mappings
+    ports:
+      - "7681:7681"   # ttyd web terminal
+      - "2222:22"     # SSH (optional, mapped to non-standard port)
+    
+    # Volume mappings for persistence
+    volumes:
+      # Main workspace - your projects
+      - ./workspace:/home/claude/workspace
+      
+      # Claude Code conversation history and settings
+      - pantheon-history:/home/claude/.claude
+      
+      # Claude Code configuration (MCP servers, etc.)
+      - ./config/claude-code:/home/claude/.config/claude-code
+      
+      # SSH keys for Git and remote access
+      - ./config/ssh:/home/claude/.ssh
+      
+      # Git configuration
+      - ./config/.gitconfig:/home/claude/.gitconfig:ro
+      
+      # Custom scripts persistence
+      - ./scripts:/home/claude/scripts
+      
+      # Zsh history persistence
+      - pantheon-zsh-history:/home/claude/.zsh_history_dir
+      
+      # Node modules cache (speeds up rebuilds)
+      - pantheon-node-cache:/home/claude/.npm
+      
+      # Python virtual environments
+      - pantheon-python-venvs:/home/claude/.venvs
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+    
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7681/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# Named volumes for data persistence
+volumes:
+  pantheon-history:
+    name: claudepantheon-history
+  pantheon-zsh-history:
+    name: claudepantheon-zsh-history
+  pantheon-node-cache:
+    name: claudepantheon-node-cache
+  pantheon-python-venvs:
+    name: claudepantheon-python-venvs
