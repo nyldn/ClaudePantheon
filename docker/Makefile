@@ -183,13 +183,14 @@ backup:
 	echo "✅ Backup created: backups/$$BACKUP_NAME"
 
 # Update Claude Code to latest version inside container
+# Native installer auto-updates, but this forces an immediate update
 update:
 	@if ! docker compose ps --format '{{.State}}' claudepantheon 2>/dev/null | grep -q "running"; then \
 		echo "❌ Container is not running. Run 'make up' first."; \
 		exit 1; \
 	fi
 	@echo "⬆️  Updating Claude Code..."
-	docker compose exec claudepantheon npm update -g @anthropic-ai/claude-code
+	docker compose exec -u claude claudepantheon sh -c 'curl -fsSL https://claude.ai/install.sh | bash'
 	@echo "✅ Claude Code updated!"
 
 # Remove container and locally-built images (preserves data directory)

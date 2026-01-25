@@ -377,15 +377,24 @@ install_custom_packages() {
 
 # Verify Claude Code installation
 verify_claude() {
-    if ! command -v claude > /dev/null 2>&1; then
-        error "Claude Code not found. Installing..."
-        if ! su -s /bin/sh ${USERNAME} -c "npm install -g @anthropic-ai/claude-code"; then
+    # Check if claude is in PATH (native install location)
+    CLAUDE_BIN="${HOME_DIR}/.claude/bin/claude"
+
+    if [ ! -x "${CLAUDE_BIN}" ] && ! command -v claude > /dev/null 2>&1; then
+        log "Claude Code not found. Installing via native installer..."
+        if ! su -s /bin/sh ${USERNAME} -c "curl -fsSL https://claude.ai/install.sh | bash"; then
             error "Failed to install Claude Code. Container cannot start."
             exit 1
         fi
         log "Claude Code installed successfully"
     fi
-    VERSION=$(su -s /bin/sh ${USERNAME} -c "claude --version 2>/dev/null" || echo 'unknown')
+
+    # Get version (check native location first)
+    if [ -x "${CLAUDE_BIN}" ]; then
+        VERSION=$(su -s /bin/sh ${USERNAME} -c "${CLAUDE_BIN} --version 2>/dev/null" || echo 'unknown')
+    else
+        VERSION=$(su -s /bin/sh ${USERNAME} -c "claude --version 2>/dev/null" || echo 'unknown')
+    fi
     log "Claude Code version: ${VERSION}"
 }
 
