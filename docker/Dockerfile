@@ -112,8 +112,11 @@ RUN apk add --no-cache \
 # USER SETUP
 # Create non-root user with sudo access
 # UID/GID are remapped at runtime by entrypoint.sh
+# Note: node:alpine has node user at UID/GID 1000, remove it first
 # ─────────────────────────────────────────────────────────────
-RUN addgroup -g ${USER_GID} ${USERNAME} \
+RUN deluser --remove-home node 2>/dev/null || true \
+    && delgroup node 2>/dev/null || true \
+    && addgroup -g ${USER_GID} ${USERNAME} \
     && adduser -D -u ${USER_UID} -G ${USERNAME} -s /bin/zsh ${USERNAME} \
     && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/${USERNAME} \
     && chmod 0440 /etc/sudoers.d/${USERNAME}
