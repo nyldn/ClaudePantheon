@@ -32,10 +32,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        USERNAME: claude              # Container username (don't change)
-        USER_UID: ${PUID:-1000}       # Mapped to host UID at runtime
-        USER_GID: ${PGID:-1000}       # Mapped to host GID at runtime
+      # Note: UID/GID mapping happens at runtime via entrypoint.sh, not at build time
+      # This prevents conflicts with system groups when building on different platforms
 
     container_name: claudepantheon
     hostname: claudepantheon

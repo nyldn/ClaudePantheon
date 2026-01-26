@@ -40,10 +40,11 @@ LABEL project="ClaudePantheon"
 
 # ─────────────────────────────────────────────────────────────
 # BUILD ARGUMENTS
-# Passed from docker-compose.yml build.args or --build-arg
 # Only available during build, not at runtime
+# Note: UID/GID are remapped to host values at runtime by entrypoint.sh
 # ─────────────────────────────────────────────────────────────
 ARG USERNAME=claude
+# Use standard 1000:1000 at build time - entrypoint remaps to PUID/PGID at runtime
 ARG USER_UID=1000
 ARG USER_GID=1000
 
