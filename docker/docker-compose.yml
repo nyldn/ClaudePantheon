@@ -20,6 +20,7 @@
 #
 # PORTS:
 #   - 7681: Web terminal (ttyd)
+#   - 7682: FileBrowser (optional, enable with --profile files)
 #   - 2222: SSH (optional, enable via ENABLE_SSH)
 
 version: '3.8'
@@ -149,3 +150,64 @@ services:
       timeout: 10s                # Fail if no response in 10s
       retries: 3                  # Unhealthy after 3 failures
       start_period: 10s           # Grace period on startup
+
+  # ═══════════════════════════════════════════════════════════
+  # FILEBROWSER QUANTUM (Optional)
+  # ═══════════════════════════════════════════════════════════
+  # Web-based file manager for visual file management
+  #
+  # Enable with:
+  #   docker compose --profile files up -d
+  #   make up-files
+  #
+  # Access at: http://localhost:7682 (or FILEBROWSER_PORT)
+  # Default credentials: admin / admin
+  # ───────────────────────────────────────────────────────────
+  filebrowser:
+    image: gtstef/filebrowser:stable-slim
+    container_name: claudepantheon-files
+    hostname: claudepantheon-files
+    restart: unless-stopped
+    profiles:
+      - files                     # Only starts with --profile files
+
+    user: "${PUID:-1000}:${PGID:-1000}"
+
+    environment:
+      - TZ=${TZ:-UTC}
+      - FB_BASEURL=/
+
+    volumes:
+      # Main data directory - maps to /srv/data in FileBrowser
+      - ${CLAUDE_DATA_PATH:-./data}:/srv/data
+
+      # FileBrowser config persistence
+      - ${CLAUDE_DATA_PATH:-./data}/filebrowser:/home/filebrowser/data
+
+      # ┌─────────────────────────────────────────────────────────────┐
+      # │  HOST MOUNTS - Mirror the same mounts from claudepantheon  │
+      # │  to access host directories via FileBrowser                │
+      # │                                                             │
+      # │  Use /srv/mounts/<name> to match /mounts/<name> in Claude  │
+      # └─────────────────────────────────────────────────────────────┘
+      #
+      # Examples - uncomment and modify to match claudepantheon mounts:
+      # - /home/user:/srv/mounts/home
+      # - /media/storage:/srv/mounts/storage
+      # - /var/www:/srv/mounts/www:ro
+
+    ports:
+      - "${FILEBROWSER_PORT:-7682}:80"
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s

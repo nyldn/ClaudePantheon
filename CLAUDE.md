@@ -34,6 +34,13 @@ make backup         # Backup data directory to tarball
 make update         # Update Claude Code to latest version
 make clean          # Remove container and images (keeps data)
 make purge          # Full cleanup including data (DESTRUCTIVE)
+
+# FileBrowser (optional web file manager)
+make up-files       # Start with FileBrowser enabled
+make down-all       # Stop all services including FileBrowser
+make files-up       # Start FileBrowser only
+make files-down     # Stop FileBrowser only
+make files-logs     # Follow FileBrowser logs
 ```
 
 ### Shell Aliases (inside container)
@@ -85,6 +92,7 @@ $CLAUDE_DATA_PATH/          # ALL PERSISTENT DATA (auto-created)
 ├── zsh-history/
 ├── npm-cache/
 ├── python-venvs/
+├── filebrowser/            # FileBrowser config (optional)
 ├── scripts/                # Runtime scripts (all customizable!)
 │   ├── entrypoint.sh       # Container bootstrap
 │   ├── shell-wrapper.sh    # First-run wizard
@@ -126,6 +134,7 @@ $CLAUDE_DATA_PATH/          # ALL PERSISTENT DATA (auto-created)
 | `data/scripts/shell-wrapper.sh` | First-run wizard (customizable) |
 | `data/scripts/.zshrc` | Shell config (symlinked to ~/.zshrc, customizable) |
 | `data/custom-packages.txt` | Alpine packages to install on boot |
+| `data/filebrowser/` | FileBrowser Quantum config and database |
 | `data/.env` | Environment configuration (API keys, etc.) |
 
 ## Configuration
@@ -138,6 +147,9 @@ Host-level settings go in `docker/.env` (copy from `.env.example`):
 - `LOG_TO_FILE` - Enable logging to data/logs/ (default: false)
 - `MEMORY_LIMIT` - Container memory limit (default: 4G)
 - `CLAUDE_BYPASS_PERMISSIONS` - Skip permission prompts (default: false)
+- `FILEBROWSER_PORT` - FileBrowser web port (default: 7682)
+- `FILEBROWSER_USERNAME` - FileBrowser web UI username (default: admin)
+- `FILEBROWSER_PASSWORD` - FileBrowser web UI password
 
 Claude Code is configured to use zsh as its shell (`CLAUDE_CODE_SHELL=/bin/zsh`).
 

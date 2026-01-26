@@ -250,7 +250,70 @@ make backup   # Backup entire data directory
 make update   # Update Claude Code to latest
 make clean    # Remove container and images (keeps data)
 make purge    # Remove everything including data
+
+# FileBrowser (optional)
+make up-files   # Start with FileBrowser enabled
+make down-all   # Stop all services
+make files-up   # Start FileBrowser only
+make files-down # Stop FileBrowser only
+make files-logs # Follow FileBrowser logs
 ```
+
+## 📁 FileBrowser (Optional)
+
+ClaudePantheon includes optional web-based file management via [FileBrowser Quantum](https://github.com/gtsteffaniak/filebrowser).
+
+### Enable FileBrowser
+
+```bash
+# Start with FileBrowser enabled
+make up-files
+
+# Or manually
+docker compose --profile files up -d
+```
+
+### Access
+
+| Service | URL | Default Port |
+|---------|-----|--------------|
+| Terminal | http://localhost:7681 | `7681` |
+| Files | http://localhost:7682 | `FILEBROWSER_PORT` |
+
+**Default credentials:** `admin` / `admin`
+
+### Configuration
+
+Set in `docker/.env`:
+```bash
+FILEBROWSER_PORT=7682        # Change if needed for reverse proxy
+FILEBROWSER_USERNAME=admin   # Web UI username
+FILEBROWSER_PASSWORD=secret  # Web UI password
+```
+
+### Features
+
+- 📂 Browse all workspace files visually
+- ⬆️ Upload files via drag & drop
+- ⬇️ Download files and folders
+- ✏️ Edit text files in browser
+- 🔍 Fast search across all files (indexed)
+- 🔗 Generate shareable links
+- 📱 Mobile-friendly interface
+
+### Host Mounts in FileBrowser
+
+If you've configured host directory mounts in `docker-compose.yml`, mirror them for FileBrowser to access:
+
+```yaml
+# In the filebrowser service volumes section:
+volumes:
+  - ${CLAUDE_DATA_PATH:-./data}:/srv/data
+  - /home/user:/srv/mounts/home           # Same as claudepantheon
+  - /media/storage:/srv/mounts/storage    # Same as claudepantheon
+```
+
+Files appear at `/srv/data/` and `/srv/mounts/` in FileBrowser, corresponding to `/app/data/` and `/mounts/` in the Claude terminal.
 
 ## 📦 Custom Packages
 
