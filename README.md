@@ -4,13 +4,13 @@
 
 ### *A temple for your persistent Claude Code sessions*
 
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://ghcr.io/randomsynergy17/claudepantheon)
+[![GHCR](https://img.shields.io/badge/GHCR-Package-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://github.com/RandomSynergy17/ClaudePantheon/pkgs/container/claudepantheon)
 [![Alpine](https://img.shields.io/badge/Alpine-Linux-0D597F?style=for-the-badge&logo=alpinelinux&logoColor=white)](https://alpinelinux.org/)
 [![Claude](https://img.shields.io/badge/Claude-Code-D97757?style=for-the-badge&logo=anthropic&logoColor=white)](https://claude.ai/)
 
 **Run Claude Code anywhere. Remember everything. Access from any browser.**
 
-[Quick Start](#-quick-start) • [Features](#-features) • [Use Cases](#-use-cases) • [Commands](#-commands) • [Configuration](#️-makefile-commands)
+[Quick Start](#-quick-start) • [Configuration](#%EF%B8%8F-configuration) • [Architecture](#-architecture) • [Commands](#-commands) • [Troubleshooting](#-troubleshooting)
 
 </div>
 
@@ -18,7 +18,7 @@
 
 ## 🎯 What is ClaudePantheon?
 
-ClaudePantheon gives you a **persistent, always-on Claude Code environment** that you can access from any device with a web browser. Unlike running Claude Code locally, your sessions, context, and workspace persist across restarts—Claude remembers your projects, preferences, and ongoing work.
+ClaudePantheon gives you a **persistent, always-on Claude Code environment** that you can access from any device with a web browser. Unlike running Claude Code locally, your sessions, context, and workspace persist across restarts — Claude remembers your projects, preferences, and ongoing work.
 
 Think of it as your personal AI development workstation in the cloud (or on your server), ready whenever you need it.
 
@@ -50,7 +50,7 @@ Deploy shared instances for your team. Each developer gets their own persistent 
 <td width="50%">
 
 ### 🔧 DevOps & Automation
-Let Claude manage your infrastructure. Connect MCP servers for GitHub, databases, Home Assistant, and more—all persisted between sessions.
+Let Claude manage your infrastructure. Connect MCP servers for GitHub, databases, Home Assistant, and more — all persisted between sessions.
 
 ### 📱 Mobile Access
 Access your AI coding assistant from a tablet or phone browser when you're away from your main workstation.
@@ -127,27 +127,48 @@ Spin up isolated environments to test new workflows, MCP integrations, or Claude
 
 ---
 
+## 📋 Prerequisites
+
+- **Docker** (20.10+) and **Docker Compose** (v2)
+- An **Anthropic API key** or the ability to run `claude auth login` for browser-based auth
+- ~500MB disk space for the image, plus space for your data
+
+---
+
 ## 🚀 Quick Start
+
+### Option 1: Pull from GHCR (recommended)
+
+```bash
+git clone https://github.com/RandomSynergy17/ClaudePantheon.git
+cd ClaudePantheon/docker
+
+cp .env.example .env
+# Edit .env — at minimum set CLAUDE_DATA_PATH and PUID/PGID
+
+docker compose pull
+docker compose up -d
+```
+
+### Option 2: Build from source
 
 ```bash
 cd ClaudePantheon/docker
 
-# Optional: Configure data path and settings
 cp .env.example .env
-# Edit .env to set CLAUDE_DATA_PATH, PUID, PGID, etc.
+# Edit .env — at minimum set CLAUDE_DATA_PATH and PUID/PGID
 
-# Build and start
 make build
 make up
-
-# Open http://localhost:7681
-# You'll see the landing page with Terminal, Files, and PHP Info buttons
-# Click Terminal and complete the setup wizard, then type 'cc' to start!
 ```
+
+Open **http://localhost:7681** — you'll see the landing page with Terminal, Files, and PHP Info buttons. Click Terminal, complete the setup wizard, then type `cc` to start.
+
+---
 
 ## 🏗️ Architecture
 
-All services accessible via a single port:
+All services accessible via a single port through an nginx reverse proxy:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -165,82 +186,84 @@ All services accessible via a single port:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 📜 Commands
+### Ports
 
-### Claude Code Aliases
+| Port | Service | Notes |
+|------|---------|-------|
+| **7681** | nginx reverse proxy | All web services (`/`, `/terminal/`, `/files/`, `/webdav/`) |
+| **2222** | SSH server | Optional, requires `ENABLE_SSH=true` in `.env` |
 
-| Command | Description |
-|---------|-------------|
-| `cc` | Continue last Claude conversation |
-| `cc-new` | Start a fresh session |
-| `cc-resume` | Resume last session (same as cc) |
-| `cc-list` | Interactive session picker |
-| `cc-setup` | Re-run the CLAUDE.md setup wizard |
-| `cc-mcp` | Manage MCP server configurations |
-| `cc-bypass` | Toggle bypass permissions `[on\|off]` |
-| `cc-settings` | Show current settings |
-| `cc-info` | Show environment information |
-| `cc-help` | Show all available commands |
+### Startup Flow
 
-### Navigation Aliases
+On container start, the entrypoint script runs through this sequence:
 
-| Command | Description |
-|---------|-------------|
-| `ccw` | Go to workspace directory |
-| `ccd` | Go to data directory |
-| `ccmnt` | Go to host mounts directory |
-| `cce` | Edit workspace CLAUDE.md |
-| `ccm` | Edit MCP configuration |
-| `ccp` | Edit custom packages list |
+1. **Validate** data directory exists and is writable, check disk space (100MB minimum)
+2. **Map user** — adjusts container UID/GID to match `PUID`/`PGID` from `.env`
+3. **Initialize data** — creates directory structure under `$CLAUDE_DATA_PATH` on first run
+4. **Copy defaults** — scripts, nginx config, and webroot are copied from the image into the data volume *only if they don't already exist* (preserves your customizations)
+5. **Install packages** — reads `custom-packages.txt` and installs via `apk`
+6. **Fix permissions** — sets ownership and SSH key permissions
+7. **Start services** — launches nginx, php-fpm, FileBrowser (if enabled), and ttyd
 
-## 📁 Data Structure
+### Startup Validation
 
-All persistent data lives in a single mounted directory (configurable via `CLAUDE_DATA_PATH`).
+The entrypoint performs safety checks before proceeding:
 
-```
-docker/
-├── Dockerfile              # Alpine image definition
-├── docker-compose.yml      # Container configuration
-├── Makefile                # Management commands
-├── .env.example            # Configuration template
-├── defaults/               # Default configs (copied on first run)
-│   ├── nginx/
-│   │   └── nginx.conf      # Reverse proxy configuration
-│   └── webroot/
-│       └── public_html/
-│           └── index.php   # Landing page
-├── scripts/
-│   ├── entrypoint.sh       # Container bootstrap
-│   ├── start-services.sh   # Service supervisor
-│   ├── shell-wrapper.sh    # First-run wizard
-│   └── .zshrc              # Shell configuration
+- **Data directory writable** — fails fast if the volume mount is broken
+- **Disk space** — requires 100MB free minimum
+- **Loop detection** — prevents infinite redirect if custom entrypoint is misconfigured
+- **Package name validation** — only alphanumeric, dash, underscore, dot allowed in `custom-packages.txt`
 
-# Data directory (default: /docker/appdata/claudepantheon)
-$CLAUDE_DATA_PATH/          # ALL PERSISTENT DATA (auto-created)
-├── workspace/              # Your projects
-├── claude/                 # Session history
-├── mcp/                    # MCP configuration
-│   └── mcp.json            # MCP server configuration
-├── nginx/                  # nginx config (customizable)
-│   └── nginx.conf
-├── webroot/                # Web content (customizable)
-│   └── public_html/
-│       └── index.php       # Landing page
-├── filebrowser/            # FileBrowser database
-├── ssh/                    # SSH keys (auto 700/600 permissions)
-├── logs/                   # Container logs (optional)
-├── zsh-history/            # Shell history
-├── npm-cache/              # npm cache
-├── python-venvs/           # Python virtual environments
-├── scripts/                # Runtime scripts (all customizable!)
-│   ├── entrypoint.sh       # Container bootstrap
-│   ├── start-services.sh   # Service supervisor
-│   ├── shell-wrapper.sh    # First-run wizard
-│   └── .zshrc              # Shell configuration
-├── gitconfig               # Git configuration
-├── custom-packages.txt     # Alpine packages to install
-└── .env                    # Container environment
-```
+---
+
+## ⚙️ Configuration
+
+All configuration is done through `docker/.env` (copy from `.env.example`). Changes require `make restart` unless noted otherwise.
+
+### .env Variable Reference
+
+#### Data & User
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLAUDE_DATA_PATH` | `/docker/appdata/claudepantheon` | Host path for all persistent data |
+| `PUID` | `1000` | Container user ID (run `id -u` on host) |
+| `PGID` | `1000` | Container group ID (run `id -g` on host) |
+
+#### Claude Code
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ANTHROPIC_API_KEY` | *(empty)* | Claude API key. Alternatively, run `claude auth login` inside the container |
+| `CLAUDE_BYPASS_PERMISSIONS` | `false` | Skip permission prompts. Also toggleable at runtime with `cc-bypass on\|off` |
+
+#### Authentication (Two-Zone System)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `INTERNAL_AUTH` | `false` | Enable auth for `/terminal/`, `/files/`, `/webdav/` |
+| `INTERNAL_CREDENTIAL` | *(empty)* | Credentials as `user:password` |
+| `WEBROOT_AUTH` | `false` | Enable auth for `/` (landing page) |
+| `WEBROOT_CREDENTIAL` | *(empty)* | Webroot credentials. Falls back to `INTERNAL_CREDENTIAL` if unset |
+| `TTYD_CREDENTIAL` | *(empty)* | **Deprecated.** Backward compatibility alias for `INTERNAL_CREDENTIAL` |
+
+#### Feature Toggles
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_FILEBROWSER` | `true` | Web file manager at `/files/` |
+| `ENABLE_WEBDAV` | `false` | WebDAV endpoint at `/webdav/` |
+| `ENABLE_SSH` | *(empty)* | Set to any value (e.g., `true`) to enable SSH on port 2222 |
+| `LOG_TO_FILE` | `false` | Write logs to `$CLAUDE_DATA_PATH/logs/claudepantheon.log`. Auto-rotates at 10MB |
+
+#### System
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TZ` | `UTC` | Timezone ([list](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)) |
+| `MEMORY_LIMIT` | `4G` | Container memory limit. Increase for large codebases or many MCP servers |
+
+---
 
 ## 🔐 Authentication
 
@@ -282,37 +305,136 @@ WEBROOT_AUTH=true
 WEBROOT_CREDENTIAL=guest:guestpassword
 ```
 
+---
+
+## 📜 Commands
+
+### Claude Code Aliases
+
+| Command | Description |
+|---------|-------------|
+| `cc` | Continue last Claude conversation |
+| `cc-new` | Start a fresh session |
+| `cc-resume` | Resume last session (same as cc) |
+| `cc-list` | Interactive session picker |
+| `cc-setup` | Re-run the CLAUDE.md setup wizard |
+| `cc-mcp` | Manage MCP server configurations |
+| `cc-bypass` | Toggle bypass permissions `[on\|off]` |
+| `cc-settings` | Show current settings |
+| `cc-info` | Show environment information |
+| `cc-help` | Show all available commands |
+
+### Navigation Aliases
+
+| Command | Description |
+|---------|-------------|
+| `ccw` | Go to workspace directory |
+| `ccd` | Go to data directory |
+| `ccmnt` | Go to host mounts directory |
+| `cce` | Edit workspace CLAUDE.md |
+| `ccm` | Edit MCP configuration |
+| `ccp` | Edit custom packages list |
+
+---
+
+## 📁 File Structure
+
+### Source (in the repository)
+
+```
+docker/
+├── Dockerfile              # Alpine image definition
+├── docker-compose.yml      # Container configuration
+├── Makefile                # Management commands
+├── .env.example            # Configuration template (copy to .env)
+├── .dockerignore           # Files excluded from build context
+├── defaults/               # Default configs baked into the image
+│   ├── nginx/
+│   │   └── nginx.conf      # Reverse proxy configuration
+│   └── webroot/
+│       └── public_html/
+│           └── index.php   # Landing page
+└── scripts/
+    ├── entrypoint.sh       # Container bootstrap
+    ├── start-services.sh   # Service supervisor (nginx, php-fpm, filebrowser, ttyd)
+    ├── shell-wrapper.sh    # First-run wizard
+    └── .zshrc              # Shell configuration
+```
+
+### Data Volume (auto-created on first run)
+
+All persistent data lives in `$CLAUDE_DATA_PATH`. On first run, defaults from the image are copied here. Your edits are preserved across container rebuilds and image updates.
+
+```
+$CLAUDE_DATA_PATH/
+├── workspace/              # Your projects
+├── claude/                 # Session history and Claude state
+├── mcp/
+│   └── mcp.json            # MCP server configuration
+├── nginx/
+│   └── nginx.conf          # nginx config (customizable)
+├── webroot/
+│   └── public_html/
+│       └── index.php       # Landing page (customizable)
+├── filebrowser/            # FileBrowser database
+├── ssh/                    # SSH keys (auto 700/600 permissions)
+├── logs/                   # Container logs (when LOG_TO_FILE=true)
+├── zsh-history/            # Shell history
+├── npm-cache/              # npm cache
+├── python-venvs/           # Python virtual environments
+├── scripts/                # Runtime scripts (all customizable)
+│   ├── entrypoint.sh       # Container bootstrap
+│   ├── start-services.sh   # Service supervisor
+│   ├── shell-wrapper.sh    # First-run wizard
+│   └── .zshrc              # Shell configuration
+├── gitconfig               # Git configuration
+└── custom-packages.txt     # Alpine packages to install on start
+```
+
+**Key point:** Defaults are only copied if the file doesn't exist yet. To reset a file to its default, delete it and restart the container.
+
+---
+
 ## 🛠️ Makefile Commands
+
+Run from the `docker/` directory.
 
 ```bash
 # Container Lifecycle
-make build    # Build the Docker image
-make up       # Start ClaudePantheon (detached)
-make down     # Stop the container
-make restart  # Restart the container
-make rebuild  # Quick rebuild (down + build + up)
+make build      # Build the Docker image from source
+make up         # Start ClaudePantheon (detached)
+make down       # Stop the container
+make restart    # Restart the container
+make rebuild    # Stop, rebuild, and start (down + build + up)
 
 # Development & Access
-make shell    # Get a shell in the container
-make logs     # View logs (follow mode)
-make dev      # Run in foreground with logs
+make shell      # Open zsh shell in running container
+make logs       # Follow container logs (Ctrl+C to exit)
+make dev        # Run in foreground with logs
 
 # Status & Health
-make status   # Show container status and resources
-make health   # Check web interface health
-make version  # Show Claude Code version
-make tree     # Show data directory structure
+make status     # Show container status, data dir, and resource usage
+make health     # Check if nginx is responding
+make version    # Show Claude Code version
+make tree       # Show data directory structure
 
 # Maintenance
-make backup   # Backup entire data directory
-make update   # Update Claude Code to latest
-make clean    # Remove container and images (keeps data)
-make purge    # Remove everything including data
+make backup     # Backup data directory to timestamped tarball
+make update     # Update Claude Code to latest inside container
+make clean      # Remove container and images (keeps data)
+make purge      # Remove everything including data (DESTRUCTIVE)
+
+# Registry (GHCR)
+make login      # Log in to GitHub Container Registry
+make push       # Build and push image to GHCR (:latest)
+make push-all   # Push with :latest + :SHA tags
 ```
+
+---
 
 ## 🌐 Landing Page
 
-The landing page is a PHP file at `data/webroot/public_html/index.php`. Features:
+The landing page is a PHP file at `$CLAUDE_DATA_PATH/webroot/public_html/index.php`.
 
 - **Three quick-access buttons**: Terminal, Files, PHP Info
 - **Inline PHP info**: Accordion that expands without leaving the page
@@ -320,67 +442,85 @@ The landing page is a PHP file at `data/webroot/public_html/index.php`. Features
 - **Mobile responsive**: Buttons stack on smaller screens
 - **Customizable**: Edit the file to add branding, links, or features
 
-### Customizing the Landing Page
+Edit `$CLAUDE_DATA_PATH/webroot/public_html/index.php` to add custom branding, links, status widgets, or PHP applications.
 
-Edit `$CLAUDE_DATA_PATH/webroot/public_html/index.php` to:
-- Change branding/logo
-- Add custom links or buttons
-- Include system status widgets
-- Add your own PHP applications
+---
 
 ## 📁 FileBrowser
 
-FileBrowser Quantum is embedded in the container and accessible at `/files/`.
+[FileBrowser Quantum](https://github.com/gtsteffaniak/filebrowser) is embedded in the container at `/files/`.
 
-### Features
+- Browse all workspace files visually
+- Upload files via drag & drop
+- Download files and folders
+- Edit text files in browser
+- Fast indexed search
+- Mobile-friendly interface
 
-- 📂 Browse all workspace files visually
-- ⬆️ Upload files via drag & drop
-- ⬇️ Download files and folders
-- ✏️ Edit text files in browser
-- 🔍 Fast indexed search across all files
-- 🔗 Generate shareable links
-- 📱 Mobile-friendly interface
+Disable with `ENABLE_FILEBROWSER=false` in `.env`.
 
-### Disable FileBrowser
-
-```bash
-# In docker/.env
-ENABLE_FILEBROWSER=false
-```
+---
 
 ## 🔗 WebDAV
 
-WebDAV allows you to mount your ClaudePantheon workspace as a network drive.
-
-### Enable WebDAV
-
-```bash
-# In docker/.env
-ENABLE_WEBDAV=true
-```
-
-### Connect
+WebDAV allows mounting the ClaudePantheon workspace as a network drive. Enable with `ENABLE_WEBDAV=true` in `.env`.
 
 **macOS Finder:**
 1. Go → Connect to Server (⌘K)
 2. Enter: `http://localhost:7681/webdav/`
-3. Enter credentials if auth is enabled
 
 **Windows Explorer:**
 1. This PC → Map Network Drive
 2. Enter: `http://localhost:7681/webdav/`
-3. Enter credentials if auth is enabled
 
 **Linux:**
 ```bash
-# Using davfs2
 sudo mount -t davfs http://localhost:7681/webdav/ /mnt/claudepantheon
 ```
 
+---
+
+## 🖥️ SSH Server
+
+An optional SSH server can be enabled for direct shell access without the web terminal.
+
+```bash
+# In docker/.env
+ENABLE_SSH=true
+```
+
+Connect via:
+```bash
+ssh -p 2222 claude@localhost
+```
+
+SSH host keys are persisted in `$CLAUDE_DATA_PATH/ssh-host-keys/` so they survive container rebuilds. User SSH keys go in `$CLAUDE_DATA_PATH/ssh/` with permissions auto-fixed (directories 700, private keys 600, public keys 644).
+
+---
+
+## 📝 Logging
+
+ClaudePantheon has two separate logging systems:
+
+**1. Docker container logs** (always active):
+```bash
+make logs              # Follow logs
+docker compose logs    # View logs
+```
+Container logs use `json-file` driver with 10MB rotation (3 files kept).
+
+**2. Application log file** (opt-in):
+```bash
+# In docker/.env
+LOG_TO_FILE=true
+```
+Writes to `$CLAUDE_DATA_PATH/logs/claudepantheon.log`. Auto-rotates at 10MB.
+
+---
+
 ## 📦 Custom Packages
 
-Add Alpine packages to `./data/custom-packages.txt` (one per line). Packages install on every container start—no rebuild required.
+Add Alpine packages to `$CLAUDE_DATA_PATH/custom-packages.txt` (one per line). Packages install on every container start — no rebuild required.
 
 ```bash
 # Example custom-packages.txt
@@ -390,7 +530,9 @@ go
 rust
 ```
 
-Find packages at: https://pkgs.alpinelinux.org/packages
+Only alphanumeric characters, dashes, underscores, and dots are allowed in package names. Find packages at: https://pkgs.alpinelinux.org/packages
+
+---
 
 ## 👤 User Mapping
 
@@ -401,43 +543,9 @@ PUID=1000  # Run `id -u` on host
 PGID=1000  # Run `id -g` on host
 ```
 
-The entrypoint adjusts container user at runtime—no rebuild needed.
+The entrypoint adjusts the container user at runtime — no rebuild needed. This ensures files created inside the container have the correct ownership on the host.
 
-## Memory Limits
-
-Configure container memory in `docker/.env`:
-
-```bash
-MEMORY_LIMIT=4G  # Default
-```
-
-Increase for heavy usage (large codebases, many MCP servers).
-
-## Claude Code Settings
-
-### Bypass Permissions
-
-Skip all permission prompts (Claude executes without asking). Can be configured two ways:
-
-**Option 1: Environment variable** (requires restart)
-```bash
-# In docker/.env
-CLAUDE_BYPASS_PERMISSIONS=true  # Default: false
-```
-
-**Option 2: Runtime toggle** (instant, no restart)
-```bash
-cc-bypass on      # Enable bypass
-cc-bypass off     # Disable bypass
-cc-bypass         # Toggle current setting
-cc-settings       # View current settings
-```
-
-**Warning:** Only enable if you trust Claude to run commands autonomously. This adds `--dangerously-skip-permissions` to all claude commands.
-
-### Default Shell
-
-Claude Code uses zsh by default in this container (set via `CLAUDE_CODE_SHELL=/bin/zsh`). This ensures Claude's shell commands use the same environment as your terminal.
+---
 
 ## Host Directory Mounts
 
@@ -453,17 +561,19 @@ volumes:
   - /var/www:/mounts/www:ro  # read-only
 ```
 
-Inside the container, access mounted directories at `/mounts/`:
+Inside the container:
 ```bash
 ls /mounts/home/projects
 cd /mounts/storage/code
 ```
 
-**Security note:** Mounted directories are accessible to Claude with full read/write permissions (unless `:ro` is specified). Only mount directories you want Claude to access.
+**Security note:** Mounted directories are accessible to Claude with full read/write permissions unless `:ro` is specified. Only mount directories you want Claude to access.
+
+---
 
 ## 🔌 MCP Configuration
 
-Edit `./data/mcp/mcp.json` to add MCP servers:
+Edit `$CLAUDE_DATA_PATH/mcp/mcp.json` to add MCP servers. The default config includes filesystem access to the workspace.
 
 ```json
 {
@@ -492,19 +602,85 @@ Edit `./data/mcp/mcp.json` to add MCP servers:
 | Home Assistant | `mcp-server-home-assistant` | Smart home |
 | Notion | `mcp-notion` | Workspace |
 
+---
+
+## Claude Code Settings
+
+### API Authentication
+
+**Option 1: API key** (set once, works immediately):
+```bash
+# In docker/.env
+ANTHROPIC_API_KEY=sk-ant-api03-xxxxx
+```
+
+**Option 2: Browser auth** (interactive login):
+```bash
+make shell
+claude auth login
+```
+
+### Bypass Permissions
+
+Skip all permission prompts (Claude executes without asking):
+
+**Environment variable** (requires restart):
+```bash
+# In docker/.env
+CLAUDE_BYPASS_PERMISSIONS=true
+```
+
+**Runtime toggle** (instant, no restart):
+```bash
+cc-bypass on      # Enable
+cc-bypass off     # Disable
+cc-bypass         # Toggle
+cc-settings       # View current settings
+```
+
+**Warning:** Only enable if you trust Claude to run commands autonomously. This adds `--dangerously-skip-permissions` to all claude commands.
+
+### Default Shell
+
+Claude Code uses zsh by default (`CLAUDE_CODE_SHELL=/bin/zsh`), ensuring Claude's shell commands use the same environment as your interactive terminal.
+
+---
+
 ## 🔒 Security
+
+### Built-in Protections
+
+- **`no-new-privileges`** — Docker security option prevents privilege escalation
+- **Non-root runtime** — Services run as the `claude` user (UID/GID mapped to host)
+- **Two-zone auth** — Separate credentials for landing page vs internal services
+- **SSH key permissions** — Auto-fixed on every start (700 directories, 600 private keys)
+- **Package validation** — Custom package names are validated before installation
 
 ### Essential Configuration
 
-1. **Set authentication** in `docker/.env` - Use `INTERNAL_AUTH=true` with credentials
-2. **Use a reverse proxy** - Add HTTPS with nginx/Caddy
-3. **Limit port exposure** - Only expose ports you need
+1. **Set authentication** in `docker/.env` — use `INTERNAL_AUTH=true` with strong credentials
+2. **Use a reverse proxy** — add HTTPS with nginx, Caddy, or Traefik
+3. **Limit port exposure** — only expose ports you need
 
 ### Remote Access Options
 
-- **Tailscale** - Add to your tailnet for secure access
-- **Cloudflare Tunnel** - Zero-trust access without port forwarding
-- **VPN** - Access via your network VPN
+- **Tailscale** — add to your tailnet for secure access
+- **Cloudflare Tunnel** — zero-trust access without port forwarding
+- **VPN** — access via your network VPN
+
+---
+
+## 🚀 CI/CD
+
+The repository includes a GitHub Actions workflow (`.github/workflows/docker-publish.yml`) that automatically builds and pushes the Docker image to GHCR:
+
+- **On push to `main`**: publishes `ghcr.io/randomsynergy17/claudepantheon:latest` and `:SHA`
+- **On version tags** (`v*`): publishes semver tags (e.g., `:1.0.0`, `:1.0`)
+- **On pull requests**: builds the image without pushing (validation only)
+
+The image is available at: `ghcr.io/randomsynergy17/claudepantheon`
+
+---
 
 ## 🔧 Troubleshooting
 
@@ -553,19 +729,28 @@ rm data/scripts/entrypoint.sh
 make restart
 ```
 
-## 💾 Backup
+---
+
+## 💾 Backup & Restore
 
 ```bash
-# Quick backup of all data
+# Quick backup (creates timestamped tarball in docker/backups/)
 make backup
 
 # Manual backup
 tar -czf claudepantheon-backup.tar.gz -C docker data/
+
+# Restore from backup
+make down
+tar -xzf claudepantheon-backup.tar.gz -C docker/
+make up
 ```
+
+---
 
 ## 📄 License
 
-MIT - Do whatever you want with it!
+MIT — Do whatever you want with it!
 
 ---
 
