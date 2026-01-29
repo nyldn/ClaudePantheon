@@ -179,35 +179,40 @@ setup_user_mapping() {
     log "User mapping complete: ${USERNAME} (${PUID}:${PGID})"
 }
 
-# Copy default scripts to data directory (only if not exists)
+# Copy default scripts to data directory
+# Always updates from image defaults unless user creates a .keep marker
+# To prevent overwrite: touch /app/data/scripts/.keep
 init_scripts() {
     log "Checking scripts in data directory..."
 
     mkdir -p "${DATA_DIR}/scripts"
 
-    # Copy scripts from defaults if they don't exist (preserves user customizations)
-    if [ ! -f "${DATA_DIR}/scripts/entrypoint.sh" ]; then
-        cp "${DEFAULTS_DIR}/entrypoint.sh" "${DATA_DIR}/scripts/"
-        chmod +x "${DATA_DIR}/scripts/entrypoint.sh"
-        log "Installed default entrypoint.sh"
+    # If .keep exists, only copy missing scripts (preserves user customizations)
+    # Otherwise, always update from image defaults to pick up bug fixes
+    COPY_MODE="update"
+    if [ -f "${DATA_DIR}/scripts/.keep" ]; then
+        COPY_MODE="missing"
+        log "Scripts .keep marker found - only installing missing scripts"
     fi
 
-    if [ ! -f "${DATA_DIR}/scripts/shell-wrapper.sh" ]; then
-        cp "${DEFAULTS_DIR}/shell-wrapper.sh" "${DATA_DIR}/scripts/"
-        chmod +x "${DATA_DIR}/scripts/shell-wrapper.sh"
-        log "Installed default shell-wrapper.sh"
-    fi
+    for SCRIPT in entrypoint.sh shell-wrapper.sh start-services.sh .zshrc; do
+        SRC="${DEFAULTS_DIR}/${SCRIPT}"
+        DST="${DATA_DIR}/scripts/${SCRIPT}"
 
-    if [ ! -f "${DATA_DIR}/scripts/.zshrc" ]; then
-        cp "${DEFAULTS_DIR}/.zshrc" "${DATA_DIR}/scripts/"
-        log "Installed default .zshrc"
-    fi
+        if [ ! -f "${SRC}" ]; then
+            continue
+        fi
 
-    if [ ! -f "${DATA_DIR}/scripts/start-services.sh" ]; then
-        cp "${DEFAULTS_DIR}/start-services.sh" "${DATA_DIR}/scripts/"
-        chmod +x "${DATA_DIR}/scripts/start-services.sh"
-        log "Installed default start-services.sh"
-    fi
+        if [ "${COPY_MODE}" = "missing" ] && [ -f "${DST}" ]; then
+            continue
+        fi
+
+        cp "${SRC}" "${DST}"
+        case "${SCRIPT}" in
+            *.sh) chmod +x "${DST}" ;;
+        esac
+        log "Installed default ${SCRIPT}"
+    done
 
     chown -R "${PUID}:${PGID}" "${DATA_DIR}/scripts"
 }
