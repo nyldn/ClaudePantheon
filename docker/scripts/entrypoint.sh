@@ -412,24 +412,20 @@ install_custom_packages() {
 
 # Verify Claude Code installation
 verify_claude() {
-    # Check if claude is in PATH (native install location)
-    CLAUDE_BIN="${HOME_DIR}/.claude/bin/claude"
+    # Native installer puts claude at ~/.local/bin/claude
+    CLAUDE_BIN="${HOME_DIR}/.local/bin/claude"
 
-    if [ ! -x "${CLAUDE_BIN}" ] && ! command -v claude > /dev/null 2>&1; then
+    if [ ! -x "${CLAUDE_BIN}" ]; then
         log "Claude Code not found. Installing via native installer..."
-        if ! su -s /bin/sh ${USERNAME} -c "curl -fsSL https://claude.ai/install.sh | bash"; then
+        if ! su -s /bin/sh ${USERNAME} -c "export PATH=\"${HOME_DIR}/.local/bin:\$PATH\" && curl -fsSL https://claude.ai/install.sh | bash"; then
             error "Failed to install Claude Code. Container cannot start."
             exit 1
         fi
         log "Claude Code installed successfully"
     fi
 
-    # Get version (check native location first)
-    if [ -x "${CLAUDE_BIN}" ]; then
-        VERSION=$(su -s /bin/sh ${USERNAME} -c "${CLAUDE_BIN} --version 2>/dev/null" || echo 'unknown')
-    else
-        VERSION=$(su -s /bin/sh ${USERNAME} -c "claude --version 2>/dev/null" || echo 'unknown')
-    fi
+    # Get version
+    VERSION=$(su -s /bin/sh ${USERNAME} -c "${CLAUDE_BIN} --version 2>/dev/null" || echo 'unknown')
     log "Claude Code version: ${VERSION}"
 }
 
