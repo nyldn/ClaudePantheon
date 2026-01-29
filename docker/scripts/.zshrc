@@ -301,10 +301,10 @@ echo "   'cc-help'  → Show all commands"
 echo ""
 echo "   Data directory: /app/data"
 
-# Security warning if TTYD has no authentication
-if [ -z "${TTYD_CREDENTIAL:-}" ]; then
+# Security warning if no authentication is configured
+if [ "${INTERNAL_AUTH:-}" != "true" ] && [ -z "${TTYD_CREDENTIAL:-}" ] && [ -z "${INTERNAL_CREDENTIAL:-}" ]; then
     echo ""
     echo "\033[1;33m⚠️  WARNING: Web terminal has NO AUTHENTICATION\033[0m"
-    echo "   Set TTYD_CREDENTIAL in docker/.env for security"
+    echo "   Set INTERNAL_AUTH=true and INTERNAL_CREDENTIAL in docker/.env for security"
 fi
 echo ""
