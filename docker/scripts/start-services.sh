@@ -20,10 +20,10 @@ DEFAULTS_DIR="/opt/claudepantheon/defaults"
 # ─────────────────────────────────────────────────────────────
 # COLOR OUTPUT
 # ─────────────────────────────────────────────────────────────
-log_info() { echo "\033[0;36m[INFO]\033[0m $1"; }
-log_success() { echo "\033[0;32m[OK]\033[0m $1"; }
-log_warn() { echo "\033[0;33m[WARN]\033[0m $1"; }
-log_error() { echo "\033[0;31m[ERROR]\033[0m $1"; }
+log_info() { printf '\033[0;36m[INFO]\033[0m %s\n' "$1"; }
+log_success() { printf '\033[0;32m[OK]\033[0m %s\n' "$1"; }
+log_warn() { printf '\033[0;33m[WARN]\033[0m %s\n' "$1"; }
+log_error() { printf '\033[0;31m[ERROR]\033[0m %s\n' "$1"; }
 
 # ─────────────────────────────────────────────────────────────
 # CLEANUP HANDLER

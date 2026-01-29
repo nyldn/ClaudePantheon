@@ -133,6 +133,8 @@ RUN deluser --remove-home node 2>/dev/null || true \
 # ─────────────────────────────────────────────────────────────
 # SSH SERVER SETUP (Optional feature, enabled via ENABLE_SSH)
 # ─────────────────────────────────────────────────────────────
+RUN mkdir -p /var/lib/nginx/logs && chown -R ${USER_UID}:${USER_GID} /var/lib/nginx
+
 RUN mkdir -p /var/run/sshd \
     && ssh-keygen -A \
     && sed -i 's/#PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config \
