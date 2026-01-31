@@ -85,6 +85,10 @@ if [ ! -f "$DATA_DIR/webroot/public_html/index.php" ]; then
     cp "$DEFAULTS_DIR/webroot/public_html/index.php" "$DATA_DIR/webroot/public_html/index.php"
     log_success "Created default landing page"
 fi
+# Always update 404 page from defaults (not user-customized)
+if [ -f "$DEFAULTS_DIR/webroot/public_html/404.php" ]; then
+    cp "$DEFAULTS_DIR/webroot/public_html/404.php" "$DATA_DIR/webroot/public_html/404.php"
+fi
 
 # filebrowser database directory
 mkdir -p "$DATA_DIR/filebrowser"

@@ -184,6 +184,7 @@ All services accessible via a single port through an nginx reverse proxy:
 │   /terminal/     → ttyd (Claude Code)                        │
 │   /files/        → FileBrowser Quantum                       │
 │   /webdav/       → nginx WebDAV (optional)                   │
+│     workspace/   webroot/   scripts/   logs/                 │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -475,19 +476,30 @@ Disable with `ENABLE_FILEBROWSER=false` in `.env`.
 
 ## 🔗 WebDAV
 
-WebDAV allows mounting the ClaudePantheon workspace as a network drive. Enable with `ENABLE_WEBDAV=true` in `.env`.
+WebDAV allows mounting ClaudePantheon directories as a network drive. Enable with `ENABLE_WEBDAV=true` in `.env`.
+
+**Available directories:**
+
+| Path | Maps to | Purpose |
+|------|---------|---------|
+| `/webdav/workspace/` | `data/workspace/` | User projects |
+| `/webdav/webroot/` | `data/webroot/` | Landing page and web content |
+| `/webdav/scripts/` | `data/scripts/` | Runtime scripts |
+| `/webdav/logs/` | `data/logs/` | Container logs |
+
+> Sensitive directories (`claude/`, `mcp/`, `ssh/`, `filebrowser/`) are not accessible via WebDAV.
 
 **macOS Finder:**
 1. Go → Connect to Server (⌘K)
-2. Enter: `http://localhost:7681/webdav/`
+2. Enter: `http://localhost:7681/webdav/workspace/`
 
 **Windows Explorer:**
 1. This PC → Map Network Drive
-2. Enter: `http://localhost:7681/webdav/`
+2. Enter: `http://localhost:7681/webdav/workspace/`
 
 **Linux:**
 ```bash
-sudo mount -t davfs http://localhost:7681/webdav/ /mnt/claudepantheon
+sudo mount -t davfs http://localhost:7681/webdav/workspace/ /mnt/claudepantheon
 ```
 
 ---

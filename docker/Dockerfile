@@ -206,6 +206,7 @@ COPY scripts/start-services.sh /opt/claudepantheon/defaults/start-services.sh
 # Copy nginx and webroot defaults
 COPY defaults/nginx/nginx.conf /opt/claudepantheon/defaults/nginx/nginx.conf
 COPY defaults/webroot/public_html/index.php /opt/claudepantheon/defaults/webroot/public_html/index.php
+COPY defaults/webroot/public_html/404.php /opt/claudepantheon/defaults/webroot/public_html/404.php
 
 # Make scripts executable
 RUN chmod +x /opt/claudepantheon/defaults/*.sh

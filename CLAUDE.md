@@ -9,7 +9,7 @@ ClaudePantheon is a minimal Alpine-based Docker environment for persistent Claud
 - **Landing page**: PHP-based with Terminal, Files, and PHP Info buttons
 - **Web terminal**: ttyd at /terminal/
 - **File browser**: FileBrowser Quantum at /files/
-- **WebDAV**: Optional at /webdav/
+- **WebDAV**: Optional at /webdav/ (workspace/, webroot/, scripts/, logs/)
 - **Two-zone authentication**: Separate auth for internal services vs webroot
 - **Session continuity**: Claude remembers your conversations
 - **MCP integrations**: Persisted configuration
@@ -90,6 +90,7 @@ ccp             # Edit custom packages list
 │   /terminal/     → ttyd (Claude Code)                        │
 │   /files/        → FileBrowser Quantum                       │
 │   /webdav/       → nginx WebDAV (optional)                   │
+│     workspace/   webroot/   scripts/   logs/                 │
 └─────────────────────────────────────────────────────────────┘
 ```
 
