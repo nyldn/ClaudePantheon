@@ -13,6 +13,7 @@ ClaudePantheon is a minimal Alpine-based Docker environment for persistent Claud
 - **Two-zone authentication**: Separate auth for internal services vs webroot
 - **Session continuity**: Claude remembers your conversations
 - **MCP integrations**: Persisted configuration
+- **Remote mounts**: rclone FUSE mounts for S3, Google Drive, SFTP, SMB, WebDAV, FTP, etc.
 - **Runtime customization**: All scripts editable without rebuild
 
 ## Development Commands
@@ -49,13 +50,14 @@ make purge          # Full cleanup including data (DESTRUCTIVE)
 
 ```bash
 # Claude Code
-cc              # Continue last Claude session
+cc              # Continue last session (most recent)
 cc-new          # Start fresh session
-cc-resume       # Resume last session (same as cc)
-cc-list         # Interactive session picker
+cc-resume       # Resume a session (interactive picker)
+cc-list         # Resume a session (interactive picker, same as cc-resume)
 cc-setup        # Run CLAUDE.md setup wizard
 cc-mcp          # Manage MCP servers
 cc-community      # Install community skills, commands & rules
+cc-rmount         # Manage rclone remote mounts (S3, SFTP, etc.)
 cc-factory-reset  # Factory reset (wipe all data, fresh install)
 cc-bypass         # Toggle bypass permissions [on|off]
 cc-settings     # Show current settings
@@ -65,6 +67,7 @@ cc-info         # Show environment info
 ccw             # Go to workspace
 ccd             # Go to data directory
 ccmnt           # Go to host mounts (/mounts/)
+ccr             # Go to rclone mounts (/mounts/rclone/)
 
 # Quick Edit
 cce             # Edit workspace CLAUDE.md
@@ -114,16 +117,21 @@ docker/
 $CLAUDE_DATA_PATH/          # ALL PERSISTENT DATA (auto-created)
 ├── workspace/              # User projects
 ├── claude/                 # Session history
+│   ├── commands/           # Custom Claude commands
+│   ├── rules/              # Custom Claude rules
+│   └── .settings           # Runtime settings (bypass permissions, etc.)
 ├── mcp/mcp.json            # MCP server configuration
 ├── nginx/nginx.conf        # nginx config (customizable)
 ├── webroot/public_html/    # Web content (customizable)
 │   └── index.php           # Landing page
 ├── filebrowser/            # FileBrowser database
 ├── ssh/                    # SSH keys (auto 700/600 permissions)
+├── ssh-host-keys/          # Persistent SSH host keys
 ├── logs/                   # Container logs (enable with LOG_TO_FILE=true)
 ├── zsh-history/
 ├── npm-cache/
 ├── python-venvs/
+├── rclone/                 # rclone config (rclone.conf, automount.conf)
 ├── scripts/                # Runtime scripts (all customizable!)
 │   ├── entrypoint.sh       # Container bootstrap
 │   ├── start-services.sh   # Service supervisor
@@ -135,6 +143,8 @@ $CLAUDE_DATA_PATH/          # ALL PERSISTENT DATA (auto-created)
 ```
 
 **Flow:** Docker start → `entrypoint.sh` (user mapping, data init) → `start-services.sh` (nginx, php-fpm, filebrowser, ttyd) → `shell-wrapper.sh` → zsh → Claude Code CLI
+
+**Script updates:** On container start, scripts in `data/scripts/` are overwritten with image defaults. To preserve customizations, create a `.keep` file in `data/scripts/` (e.g., `touch data/scripts/.keep`). Same applies to `data/nginx/`.
 
 ## Key Files
 
@@ -182,6 +192,7 @@ WEBROOT_AUTH=false
 ### Feature Toggles
 - `ENABLE_FILEBROWSER` - Enable /files/ endpoint (default: true)
 - `ENABLE_WEBDAV` - Enable /webdav/ endpoint (default: false)
+- `ENABLE_RCLONE` - Enable rclone remote mounts (default: false; requires FUSE in docker-compose.yml)
 
 ### Claude Settings
 - `ANTHROPIC_API_KEY` - Claude API key
@@ -232,6 +243,37 @@ volumes:
 ```
 
 Access at `/mounts/` inside container.
+
+## Remote Filesystems (rclone)
+
+Mount S3, Google Drive, SFTP, SMB, WebDAV, FTP, and 50+ backends as local directories.
+
+### Enable rclone
+
+1. Set `ENABLE_RCLONE=true` in `docker/.env`
+2. Uncomment `devices`, `cap_add`, and `apparmor:unconfined` in `docker-compose.yml`
+3. Rebuild: `make rebuild`
+
+### Commands
+
+| Command | Purpose |
+|---------|---------|
+| `cc-rmount` | Interactive remote mount manager |
+| `ccr` | Navigate to `/mounts/rclone/` |
+
+### Key Files
+
+| Path | Purpose |
+|------|---------|
+| `rclone/rclone.conf` | Remote storage configurations |
+| `rclone/automount.conf` | Remotes to mount on container start |
+
+### Configuration
+
+- `ENABLE_RCLONE` - Enable rclone support (default: false)
+- Mounts appear at `/mounts/rclone/<remote_name>/`
+- `automount.conf` format: `remote_name:/path  --vfs-cache-mode=MODE`
+- Cache modes: `off`, `minimal`, `writes` (recommended), `full`
 
 ## Customization
 

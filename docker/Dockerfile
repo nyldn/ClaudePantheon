@@ -102,9 +102,12 @@ RUN apk add --no-cache \
     nginx-mod-http-dav-ext \
     php83 \
     php83-fpm \
-    php83-json \
+    php83-ctype \
     php83-openssl \
     openssl \
+    # ── Remote Filesystems ──
+    fuse3 \
+    rclone \
     # ── System Utilities ──
     shadow \
     sudo \
@@ -175,8 +178,13 @@ RUN mkdir -p /home/${USERNAME}/.config
 # ─────────────────────────────────────────────────────────────
 USER root
 ARG FB_VERSION=v1.1.1-stable
-RUN wget -qO /usr/local/bin/filebrowser \
-        "https://github.com/gtsteffaniak/filebrowser/releases/download/${FB_VERSION}/linux-amd64-filebrowser" \
+ARG TARGETARCH=amd64
+RUN case "${TARGETARCH}" in \
+        arm64|aarch64) FB_ARCH="arm64" ;; \
+        *) FB_ARCH="amd64" ;; \
+    esac; \
+    wget -qO /usr/local/bin/filebrowser \
+        "https://github.com/gtsteffaniak/filebrowser/releases/download/${FB_VERSION}/linux-${FB_ARCH}-filebrowser" \
     && chmod +x /usr/local/bin/filebrowser
 
 # ─────────────────────────────────────────────────────────────
@@ -203,16 +211,23 @@ COPY defaults/webroot/public_html/index.php /opt/claudepantheon/defaults/webroot
 RUN chmod +x /opt/claudepantheon/defaults/*.sh
 
 # ─────────────────────────────────────────────────────────────
-# DATA DIRECTORY
+# FUSE CONFIGURATION
+# Required for rclone remote filesystem mounts
+# ─────────────────────────────────────────────────────────────
+RUN echo "user_allow_other" >> /etc/fuse.conf
+
+# ─────────────────────────────────────────────────────────────
+# DATA DIRECTORY & MOUNT POINTS
 # Mount point for persistent data volume
 # Actual data stored on host via docker-compose volume mount
 # ─────────────────────────────────────────────────────────────
 RUN mkdir -p /app/data && chown ${USERNAME}:${USERNAME} /app/data
+RUN mkdir -p /mounts/rclone && chown ${USERNAME}:${USERNAME} /mounts/rclone
 
 # ─────────────────────────────────────────────────────────────
 # NETWORK PORTS
 # EXPOSE documents ports; actual mapping is in docker-compose.yml
-# 7681 = ttyd web terminal
+# 7681 = nginx reverse proxy (routes to all services)
 # 22   = SSH server (optional, enabled via ENABLE_SSH)
 # ─────────────────────────────────────────────────────────────
 EXPOSE 7681 22

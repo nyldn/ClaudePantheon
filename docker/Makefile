@@ -28,13 +28,14 @@
 -include .env
 
 # Default data path (used by status, tree, backup, purge targets)
-# Override by setting CLAUDE_DATA_PATH in .env
-CLAUDE_DATA_PATH ?= ./data
+# Must match docker-compose.yml default. Override by setting CLAUDE_DATA_PATH in .env
+CLAUDE_DATA_PATH ?= /docker/appdata/claudepantheon
 
 # ─────────────────────────────────────────────────────────────
 # REGISTRY CONFIGURATION (for GHCR push)
 # ─────────────────────────────────────────────────────────────
 REGISTRY ?= ghcr.io
+GHCR_USERNAME ?= randomsynergy17
 IMAGE_NAME ?= randomsynergy17/claudepantheon
 IMAGE_TAG ?= latest
 FULL_IMAGE := $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
@@ -235,8 +236,12 @@ purge:
 	@read -p "Type 'DELETE' to confirm permanent deletion: " confirm; \
 	if [ "$$confirm" = "DELETE" ]; then \
 		docker compose down --rmi local; \
-		rm -rf "$(CLAUDE_DATA_PATH)"/*; \
-		echo "✅ Full purge complete!"; \
+		if [ -n "$(CLAUDE_DATA_PATH)" ] && [ -d "$(CLAUDE_DATA_PATH)" ]; then \
+			rm -rf "$(CLAUDE_DATA_PATH)"/*; \
+			echo "✅ Full purge complete!"; \
+		else \
+			echo "⚠️  Data path '$(CLAUDE_DATA_PATH)' not found or empty, skipping data deletion."; \
+		fi; \
 	else \
 		echo "❌ Cancelled."; \
 	fi
@@ -250,9 +255,9 @@ purge:
 login:
 	@echo "🔐 Logging in to $(REGISTRY)..."
 	@if [ -n "$$GITHUB_TOKEN" ]; then \
-		echo "$$GITHUB_TOKEN" | docker login $(REGISTRY) -u $(REGISTRY) --password-stdin; \
+		echo "$$GITHUB_TOKEN" | docker login $(REGISTRY) -u $(GHCR_USERNAME) --password-stdin; \
 	elif command -v gh >/dev/null 2>&1; then \
-		gh auth token | docker login $(REGISTRY) -u $(REGISTRY) --password-stdin; \
+		gh auth token | docker login $(REGISTRY) -u $(GHCR_USERNAME) --password-stdin; \
 	else \
 		echo "❌ Set GITHUB_TOKEN or install gh CLI"; \
 		exit 1; \

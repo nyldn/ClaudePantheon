@@ -130,6 +130,11 @@
             transform: translateY(-2px);
         }
 
+        .btn:focus-visible {
+            outline: 2px solid var(--ctp-lavender);
+            outline-offset: 3px;
+        }
+
         .btn-icon {
             font-size: 2.5rem;
             margin-bottom: 0.75rem;
@@ -292,9 +297,15 @@
         }
 
         .footer-credit {
-            color: var(--ctp-overlay0);
+            color: var(--ctp-overlay1);
             font-size: 0.8rem;
             margin-top: 0.5rem;
+        }
+
+        /* Respect user motion preferences */
+        @media (prefers-reduced-motion: reduce) {
+            .logo { animation: none; }
+            .btn { transition: none; }
         }
 
         /* ═══════════════════════════════════════════════════════════
@@ -339,23 +350,23 @@
 
     <!-- Header -->
     <header class="header">
-        <div class="logo">&#x1f3db;&#xfe0f;</div>
+        <div class="logo" aria-hidden="true">&#x1f3db;&#xfe0f;</div>
         <h1 class="title">ClaudePantheon</h1>
         <p class="subtitle">Persistent Claude Code Environment</p>
     </header>
 
     <!-- Navigation Buttons -->
     <nav class="button-grid">
-        <a href="/terminal/" class="btn btn-terminal">
-            <span class="btn-icon">&#x1f5a5;&#xfe0f;</span>
+        <a href="/terminal/" class="btn btn-terminal" aria-label="Open Terminal">
+            <span class="btn-icon" aria-hidden="true">&#x1f5a5;&#xfe0f;</span>
             <span>Terminal</span>
         </a>
-        <a href="/files/" class="btn btn-files">
-            <span class="btn-icon">&#x1f4c1;</span>
+        <a href="/files/" class="btn btn-files" aria-label="Open File Browser">
+            <span class="btn-icon" aria-hidden="true">&#x1f4c1;</span>
             <span>Files</span>
         </a>
-        <button class="btn btn-phpinfo" onclick="togglePhpInfo()" id="phpinfo-btn">
-            <span class="btn-icon">&#x1f527;</span>
+        <button class="btn btn-phpinfo" onclick="togglePhpInfo()" id="phpinfo-btn" aria-expanded="false" aria-controls="phpinfo-accordion">
+            <span class="btn-icon" aria-hidden="true">&#x1f527;</span>
             <span>PHP Info</span>
         </button>
     </nav>
@@ -367,7 +378,7 @@
                 <?php
                 // Capture phpinfo output and strip headers
                 ob_start();
-                phpinfo(INFO_GENERAL | INFO_CONFIGURATION | INFO_MODULES | INFO_ENVIRONMENT);
+                phpinfo(INFO_GENERAL | INFO_CONFIGURATION | INFO_MODULES);
                 $phpinfo = ob_get_clean();
 
                 // Extract body content only
@@ -386,16 +397,16 @@
     <!-- Status Bar -->
     <div class="status-bar">
         <div class="status-item">
-            <span class="status-dot"></span>
-            <span>PHP <?php echo phpversion(); ?></span>
+            <span class="status-dot" aria-hidden="true"></span>
+            <span>PHP <?php echo htmlspecialchars(phpversion()); ?></span>
         </div>
         <div class="status-item">
-            <span class="status-dot"></span>
-            <span><?php echo php_uname('s') . ' ' . php_uname('r'); ?></span>
+            <span class="status-dot" aria-hidden="true"></span>
+            <span><?php echo htmlspecialchars(php_uname('s') . ' ' . php_uname('r')); ?></span>
         </div>
         <div class="status-item">
-            <span class="status-dot"></span>
-            <span>Server: <?php echo $_SERVER['SERVER_SOFTWARE'] ?? 'nginx'; ?></span>
+            <span class="status-dot" aria-hidden="true"></span>
+            <span>Server: <?php echo htmlspecialchars($_SERVER['SERVER_SOFTWARE'] ?? 'nginx'); ?></span>
         </div>
     </div>
 
@@ -412,6 +423,8 @@
 
             accordion.classList.toggle('open');
             btn.classList.toggle('active');
+            const isOpen = accordion.classList.contains('open');
+            btn.setAttribute('aria-expanded', isOpen);
         }
     </script>
 

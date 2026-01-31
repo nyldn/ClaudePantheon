@@ -41,6 +41,7 @@ services:
     container_name: claudepantheon
     hostname: claudepantheon
     restart: unless-stopped           # Auto-restart on failure/reboot
+    init: true                         # PID 1 init for zombie reaping
 
     # ─────────────────────────────────────────────────────────
     # ENVIRONMENT VARIABLES
@@ -73,12 +74,11 @@ services:
       # ── Feature Toggles ──
       - ENABLE_FILEBROWSER=${ENABLE_FILEBROWSER:-true}
       - ENABLE_WEBDAV=${ENABLE_WEBDAV:-false}
+      - ENABLE_RCLONE=${ENABLE_RCLONE:-false}   # Remote mounts (requires FUSE - see below)
 
       # Optional features
-      - ENABLE_SSH=${ENABLE_SSH:-}              # Set any value to enable
+      - ENABLE_SSH=${ENABLE_SSH:-false}          # Set to 'true' to enable SSH server
       - LOG_TO_FILE=${LOG_TO_FILE:-false}       # Log to data/logs/
-      - AUTO_CONTINUE=true                       # Continue last session
-
       # Claude Code settings
       - CLAUDE_CODE_SHELL=/bin/zsh              # Use zsh for Claude's shell commands
       - CLAUDE_BYPASS_PERMISSIONS=${CLAUDE_BYPASS_PERMISSIONS:-false}  # Skip permission prompts
@@ -133,6 +133,18 @@ services:
       # - /var/run/docker.sock:/var/run/docker.sock
 
     # ─────────────────────────────────────────────────────────
+    # FUSE SUPPORT (Required for rclone remote mounts)
+    # To enable ALL THREE of these + set ENABLE_RCLONE=true in .env:
+    #   1. Uncomment devices + cap_add below
+    #   2. Uncomment apparmor:unconfined in SECURITY section below
+    #   3. make rebuild
+    # ─────────────────────────────────────────────────────────
+    # devices:
+    #   - /dev/fuse
+    # cap_add:
+    #   - SYS_ADMIN
+
+    # ─────────────────────────────────────────────────────────
     # RESOURCE LIMITS
     # ─────────────────────────────────────────────────────────
     mem_limit: ${MEMORY_LIMIT:-4G}        # Hard memory limit
@@ -143,6 +155,7 @@ services:
     # ─────────────────────────────────────────────────────────
     security_opt:
       - no-new-privileges:true    # Prevent privilege escalation
+      # - apparmor:unconfined     # FUSE/rclone: step 2 of 3 (uncomment with devices + cap_add above)
 
     # ─────────────────────────────────────────────────────────
     # LOGGING

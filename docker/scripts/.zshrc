@@ -23,19 +23,24 @@ plugins=(
     zsh-syntax-highlighting
 )
 
-source $ZSH/oh-my-zsh.sh
+source "$ZSH/oh-my-zsh.sh"
 
 # Fix color bleeding from Claude Code errors
 # Force terminal color reset before AND after every command
-precmd() {
+# Use add-zsh-hook to avoid overriding Oh My Zsh theme hooks
+autoload -Uz add-zsh-hook
+
+_claudepantheon_precmd() {
     # Reset all attributes, then explicitly set to normal
     printf '\033[0m\033[39m\033[49m'
 }
+add-zsh-hook precmd _claudepantheon_precmd
 
-preexec() {
+_claudepantheon_preexec() {
     # Reset colors before executing any command
     printf '\033[0m'
 }
+add-zsh-hook preexec _claudepantheon_preexec
 
 # Environment
 export EDITOR='nano'
@@ -62,13 +67,16 @@ claude_mcp() {
     echo "2. Edit configuration"
     echo "3. Add/configure MCP server"
     echo "4. Show documentation"
+    echo "q. Back to shell"
     echo ""
     read "choice?Select option: "
     case $choice in
-        1) echo "" && echo "\033[0;32mCurrent MCP Configuration:\033[0m" && cat "${MCP_CONFIG}" 2>/dev/null | jq . || echo "No configuration found" ;;
+        1) echo "" && echo "\033[0;32mCurrent MCP Configuration:\033[0m" && jq . "${MCP_CONFIG}" 2>/dev/null || echo "No configuration found" ;;
         2) ${EDITOR:-nano} "${MCP_CONFIG}" ;;
         3) /app/data/scripts/shell-wrapper.sh --mcp-add ;;
         4) echo "Documentation: https://docs.anthropic.com/en/docs/claude-code/mcp" ;;
+        q|Q|"") return ;;
+        *) echo "Invalid option. Use 1-4 or q to exit." ;;
     esac
 }
 
@@ -196,9 +204,6 @@ cc_settings() {
         echo "  API Key:             \033[1;33m⬚ Not set\033[0m (browser auth)"
     fi
 
-    # Auto continue
-    echo "  Auto continue:       ${AUTO_CONTINUE:-true}"
-
     # Last session info
     local last_session=$(_get_last_session_info)
     if [ -n "$last_session" ]; then
@@ -226,7 +231,7 @@ cc_new() {
 cc_resume() {
     cd /app/data/workspace
     _record_session_start
-    eval "$(_claude_cmd) --continue"
+    eval "$(_claude_cmd) --resume"
 }
 
 cc_list() {
@@ -246,19 +251,21 @@ alias cc-settings='cc_settings'
 alias cc-info='cc_settings && claude --version'
 alias cc-community='/app/data/scripts/shell-wrapper.sh --community-only'
 alias cc-factory-reset='/app/data/scripts/shell-wrapper.sh --factory-reset'
+alias cc-rmount='/app/data/scripts/shell-wrapper.sh --rmount-only'
 alias cc-help='echo "
 ClaudePantheon Commands:
 
 Starting Sessions:
   cc-new            - Start a NEW Claude session (use this first!)
-  cc                - Continue LAST session (requires existing session)
-  cc-resume         - Resume specific session (interactive picker)
-  cc-list           - List all sessions
+  cc                - Continue last session (most recent)
+  cc-resume         - Resume a session (interactive picker)
+  cc-list           - Resume a session (interactive picker, same as cc-resume)
 
 Configuration:
   cc-setup          - Run CLAUDE.md setup wizard
   cc-mcp            - Manage MCP servers
   cc-community      - Install community skills, commands & rules
+  cc-rmount         - Manage rclone remote mounts (S3, SFTP, etc.)
   cc-bypass         - Toggle bypass permissions [on|off]
   cc-settings       - Show current settings
   cc-info           - Show environment info
@@ -269,6 +276,13 @@ Maintenance:
 Navigation:
   ccw               - Go to workspace
   ccd               - Go to data directory
+  ccmnt             - Go to host mounts directory
+  ccr               - Go to rclone mounts directory
+
+Quick Edit:
+  cce               - Edit workspace CLAUDE.md
+  ccm               - Edit MCP configuration
+  ccp               - Edit custom packages list
 
 Note: If you see \"No conversation found\", use cc-new to start!"'
 
@@ -276,6 +290,7 @@ Note: If you see \"No conversation found\", use cc-new to start!"'
 alias ccw='cd /app/data/workspace'
 alias ccd='cd /app/data'
 alias ccmnt='cd /mounts && ls -la'
+alias ccr='cd /mounts/rclone && ls -la'
 alias cce='${EDITOR:-nano} /app/data/workspace/CLAUDE.md'
 alias ccm='${EDITOR:-nano} /app/data/mcp/mcp.json'
 alias ccp='${EDITOR:-nano} /app/data/custom-packages.txt'
@@ -308,6 +323,19 @@ echo "   'cc'       → Continue last session"
 echo "   'cc-help'  → Show all commands"
 echo ""
 echo "   Data directory: /app/data"
+
+# Show rclone mount count if enabled
+if [ "${ENABLE_RCLONE:-}" = "true" ]; then
+    if [ -d /mounts/rclone ]; then
+        _rclone_count=$(find /mounts/rclone -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+        if [ "$_rclone_count" -gt 0 ]; then
+            echo "   Remote mounts: ${_rclone_count} active (ccr to browse, cc-rmount to manage)"
+        else
+            echo "   Remote mounts: enabled (run cc-rmount to add S3, SFTP, etc.)"
+        fi
+        unset _rclone_count
+    fi
+fi
 
 # Security warning if no authentication is configured
 if [ "${INTERNAL_AUTH:-}" != "true" ] && [ -z "${TTYD_CREDENTIAL:-}" ] && [ -z "${INTERNAL_CREDENTIAL:-}" ]; then

@@ -124,6 +124,7 @@ Spin up isolated environments to test new workflows, MCP integrations, or Claude
 | 📦 **Custom Packages** | Install Alpine packages without rebuilding |
 | 👤 **User Mapping** | Configurable UID/GID for permission-free bind mounts |
 | 🔐 **Two-Zone Auth** | Separate credentials for landing page vs services |
+| 🌐 **Remote Mounts** | rclone: S3, Google Drive, SFTP, SMB, WebDAV, FTP, 50+ backends |
 
 ---
 
@@ -253,6 +254,7 @@ All configuration is done through `docker/.env` (copy from `.env.example`). Chan
 |----------|---------|-------------|
 | `ENABLE_FILEBROWSER` | `true` | Web file manager at `/files/` |
 | `ENABLE_WEBDAV` | `false` | WebDAV endpoint at `/webdav/` |
+| `ENABLE_RCLONE` | `false` | rclone remote mounts (requires FUSE in docker-compose.yml) |
 | `ENABLE_SSH` | *(empty)* | Set to any value (e.g., `true`) to enable SSH on port 2222 |
 | `LOG_TO_FILE` | `false` | Write logs to `$CLAUDE_DATA_PATH/logs/claudepantheon.log`. Auto-rotates at 10MB |
 
@@ -313,16 +315,17 @@ WEBROOT_CREDENTIAL=guest:guestpassword
 
 | Command | Description |
 |---------|-------------|
-| `cc` | Continue last Claude conversation |
+| `cc` | Continue last session (most recent) |
 | `cc-new` | Start a fresh session |
-| `cc-resume` | Resume last session (same as cc) |
-| `cc-list` | Interactive session picker |
+| `cc-resume` | Resume a session (interactive picker) |
+| `cc-list` | Resume a session (interactive picker, same as cc-resume) |
 | `cc-setup` | Re-run the CLAUDE.md setup wizard |
 | `cc-mcp` | Manage MCP server configurations |
 | `cc-bypass` | Toggle bypass permissions `[on\|off]` |
 | `cc-settings` | Show current settings |
 | `cc-info` | Show environment information |
 | `cc-community` | Install community skills, commands & rules |
+| `cc-rmount` | Manage rclone remote mounts (S3, SFTP, Google Drive, etc.) |
 | `cc-factory-reset` | Factory reset — wipe all data, fresh install |
 | `cc-help` | Show all available commands |
 
@@ -333,6 +336,7 @@ WEBROOT_CREDENTIAL=guest:guestpassword
 | `ccw` | Go to workspace directory |
 | `ccd` | Go to data directory |
 | `ccmnt` | Go to host mounts directory |
+| `ccr` | Go to rclone mounts directory |
 | `cce` | Edit workspace CLAUDE.md |
 | `ccm` | Edit MCP configuration |
 | `ccp` | Edit custom packages list |
@@ -382,10 +386,14 @@ $CLAUDE_DATA_PATH/
 │       └── index.php       # Landing page (customizable)
 ├── filebrowser/            # FileBrowser database
 ├── ssh/                    # SSH keys (auto 700/600 permissions)
+├── ssh-host-keys/          # Persistent SSH host keys (root-owned)
 ├── logs/                   # Container logs (when LOG_TO_FILE=true)
 ├── zsh-history/            # Shell history
 ├── npm-cache/              # npm cache
 ├── python-venvs/           # Python virtual environments
+├── rclone/                 # rclone config & auto-mount settings
+│   ├── rclone.conf         # Remote configurations
+│   └── automount.conf      # Auto-mount on startup
 ├── scripts/                # Runtime scripts (all customizable)
 │   ├── entrypoint.sh       # Container bootstrap
 │   ├── start-services.sh   # Service supervisor
@@ -395,7 +403,7 @@ $CLAUDE_DATA_PATH/
 └── custom-packages.txt     # Alpine packages to install on start
 ```
 
-**Key point:** Defaults are only copied if the file doesn't exist yet. To reset a file to its default, delete it and restart the container.
+**Key point:** Scripts in `scripts/` and `nginx/` are updated from image defaults on every container start. To preserve your customizations, create a `.keep` marker file (e.g., `touch $CLAUDE_DATA_PATH/scripts/.keep`). Webroot files are only copied if they don't exist yet.
 
 ---
 
@@ -572,6 +580,112 @@ cd /mounts/storage/code
 ```
 
 **Security note:** Mounted directories are accessible to Claude with full read/write permissions unless `:ro` is specified. Only mount directories you want Claude to access.
+
+---
+
+## 🌐 Remote Filesystems (rclone)
+
+Mount cloud storage and remote filesystems directly into the container using [rclone](https://rclone.org/). Supports **50+ backends** including S3, Google Drive, SFTP, SMB/CIFS, WebDAV, FTP, Azure Blob, Dropbox, OneDrive, Backblaze B2, and more.
+
+### Enabling Remote Mounts
+
+Remote mounts require FUSE support, which needs three changes to `docker-compose.yml`:
+
+**Step 1:** Uncomment FUSE sections in `docker/docker-compose.yml`:
+```yaml
+    # FUSE SUPPORT
+    devices:
+      - /dev/fuse
+    cap_add:
+      - SYS_ADMIN
+
+    security_opt:
+      - no-new-privileges:true
+      - apparmor:unconfined       # uncomment this line
+```
+
+**Step 2:** Set `ENABLE_RCLONE=true` in `docker/.env`
+
+**Step 3:** Rebuild: `make rebuild`
+
+### Managing Remotes (cc-rmount)
+
+Once enabled, use the `cc-rmount` command inside the container:
+
+```
+╔═══════════════════════════════════════════════════════════╗
+║        ClaudePantheon - Remote Mount Manager             ║
+╚═══════════════════════════════════════════════════════════╝
+
+  1. Refresh mounts & remotes
+  2. Add remote
+  3. Mount remote
+  4. Unmount remote
+  5. Test remote connection
+  6. Edit rclone config (rclone config)
+  7. Auto-mount setup
+  q. Exit
+```
+
+**Quick-setup wizards** are available for common providers:
+
+| Provider | Type | Notes |
+|----------|------|-------|
+| S3 / S3-compatible | Cloud storage | AWS, Minio, Wasabi, DigitalOcean, Cloudflare |
+| Google Drive | Cloud storage | Requires OAuth token (headless auth) |
+| SFTP | Remote server | Password or SSH key auth |
+| SMB / CIFS | Network share | Windows shares, NAS devices |
+| WebDAV | Remote server | Nextcloud, Owncloud, SharePoint |
+| FTP | Remote server | Plain or FTPS |
+
+For all other providers, use the full `rclone config` interactive wizard (option 1).
+
+### Auto-Mount on Startup
+
+Configure remotes to mount automatically when the container starts. Edit `$CLAUDE_DATA_PATH/rclone/automount.conf`:
+
+```bash
+# Format: remote_name:/path  [rclone mount flags]
+gdrive:/Documents  --vfs-cache-mode=writes
+s3bucket:/data     --vfs-cache-mode=minimal
+mysftp:/home       --vfs-cache-mode=off
+```
+
+Or use `cc-rmount` → Auto-mount setup → "Add active mounts to auto-mount" to populate from current mounts.
+
+### VFS Cache Modes
+
+| Mode | Description | Best For |
+|------|-------------|----------|
+| `off` | No caching, streaming only | Large read-only files |
+| `minimal` | Metadata cache only | Read-heavy workloads |
+| `writes` | Cache writes locally (**recommended**) | General use |
+| `full` | Full read/write cache | Frequent read + write |
+
+### Accessing Remote Mounts
+
+```bash
+ccr                    # Navigate to /mounts/rclone/
+ls /mounts/rclone/     # List all mounted remotes
+cd /mounts/rclone/nas  # Access a specific mount
+```
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| `cc-rmount` says "FUSE device not available" | Uncomment `devices`, `cap_add`, and `apparmor:unconfined` in docker-compose.yml, then `make rebuild` |
+| "Transport endpoint is not connected" | Stale mount — run `cc-rmount` → Unmount, or restart the container (auto-cleaned on start) |
+| Google Drive auth fails | Run `rclone authorize "drive"` on a machine with a browser, paste the token in the quick-setup wizard |
+| Mount fails silently | Check `rclone ls <remote>:` to verify the remote config works before mounting |
+
+### Files
+
+| Path | Purpose |
+|------|---------|
+| `$CLAUDE_DATA_PATH/rclone/rclone.conf` | rclone remote configuration (persisted) |
+| `$CLAUDE_DATA_PATH/rclone/automount.conf` | Auto-mount configuration |
+| `/mounts/rclone/<name>/` | Mountpoints for active remotes |
 
 ---
 
@@ -821,10 +935,10 @@ The image is available at: `ghcr.io/randomsynergy17/claudepantheon`
 
 ### Session Not Persisting
 
-Check the data volume:
+Check the data volume (use your configured `CLAUDE_DATA_PATH`):
 ```bash
-ls -la ./data/
-ls -la ./data/claude/
+ls -la $CLAUDE_DATA_PATH/
+ls -la $CLAUDE_DATA_PATH/claude/
 ```
 
 ### Claude Not Authenticated
@@ -842,7 +956,7 @@ claude auth login
 
 ### MCP Servers Not Working
 
-1. Check config: `cat ./data/mcp/mcp.json | jq .`
+1. Check config: `jq . $CLAUDE_DATA_PATH/mcp/mcp.json`
 2. Test manually: `npx -y @modelcontextprotocol/server-github`
 3. Check status in Claude: `claude mcp`
 

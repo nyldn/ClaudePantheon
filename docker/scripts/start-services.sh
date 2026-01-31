@@ -31,6 +31,29 @@ log_error() { printf '\033[0;31m[ERROR]\033[0m %s\n' "$1"; }
 cleanup() {
     log_info "Shutting down services..."
 
+    # Stop rclone processes first (prevents new I/O during unmount)
+    if pgrep -x rclone >/dev/null 2>&1; then
+        pkill -TERM -x rclone 2>/dev/null || true
+        # Wait up to 5s for graceful shutdown
+        _rclone_wait=0
+        while pgrep -x rclone >/dev/null 2>&1 && [ "$_rclone_wait" -lt 5 ]; do
+            sleep 1
+            _rclone_wait=$((_rclone_wait + 1))
+        done
+        pkill -9 -x rclone 2>/dev/null || true
+    fi
+
+    # Unmount all rclone FUSE mounts (graceful first, lazy fallback)
+    if [ -d /mounts/rclone ]; then
+        for mount_dir in /mounts/rclone/*/; do
+            [ -d "$mount_dir" ] || continue
+            if mountpoint -q "$mount_dir" 2>/dev/null || ! timeout 3 stat "$mount_dir" >/dev/null 2>&1; then
+                timeout 5 fusermount -u "$mount_dir" 2>/dev/null || \
+                    fusermount -uz "$mount_dir" 2>/dev/null || true
+            fi
+        done
+    fi
+
     # Kill background processes
     [ -n "$NGINX_PID" ] && kill "$NGINX_PID" 2>/dev/null || true
     [ -n "$PHPFPM_PID" ] && kill "$PHPFPM_PID" 2>/dev/null || true
@@ -86,7 +109,7 @@ if [ "$INTERNAL_AUTH" = "true" ] && [ -n "$INTERNAL_CREDENTIAL" ]; then
     INTERNAL_PASS=$(echo "$INTERNAL_CREDENTIAL" | cut -d: -f2-)
 
     # Generate htpasswd (using openssl for password hash)
-    INTERNAL_HASH=$(openssl passwd -apr1 "$INTERNAL_PASS")
+    INTERNAL_HASH=$(echo "$INTERNAL_PASS" | openssl passwd -apr1 -stdin)
     echo "${INTERNAL_USER}:${INTERNAL_HASH}" > "$HTPASSWD_INTERNAL"
     chmod 600 "$HTPASSWD_INTERNAL"
     log_success "Internal zone authentication enabled (user: $INTERNAL_USER)"
@@ -107,7 +130,7 @@ if [ "$WEBROOT_AUTH" = "true" ]; then
     fi
 
     if [ -n "$WEBROOT_USER" ] && [ -n "$WEBROOT_PASS" ]; then
-        WEBROOT_HASH=$(openssl passwd -apr1 "$WEBROOT_PASS")
+        WEBROOT_HASH=$(echo "$WEBROOT_PASS" | openssl passwd -apr1 -stdin)
         echo "${WEBROOT_USER}:${WEBROOT_HASH}" > "$HTPASSWD_WEBROOT"
         chmod 600 "$HTPASSWD_WEBROOT"
         log_success "Webroot zone authentication enabled (user: $WEBROOT_USER)"

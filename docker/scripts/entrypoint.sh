@@ -259,6 +259,7 @@ init_data_directory() {
     chmod 600 "${DATA_DIR}/zsh-history/.zsh_history"
     mkdir -p "${DATA_DIR}/npm-cache"
     mkdir -p "${DATA_DIR}/python-venvs"
+    mkdir -p "${DATA_DIR}/rclone"
     mkdir -p "${DATA_DIR}/scripts"
 
     # Initialize scripts from defaults
@@ -338,26 +339,28 @@ EOF
 }
 
 # Create symlinks from home directory to data directory
+# Uses ln -sfn: -s=symbolic, -f=force overwrite, -n=don't follow existing symlink/dir
 setup_symlinks() {
     log "Setting up symlinks..."
 
-    # Remove existing directories/files and create symlinks
-    rm -rf "${HOME_DIR}/workspace" && ln -sf "${DATA_DIR}/workspace" "${HOME_DIR}/workspace"
-    rm -rf "${HOME_DIR}/.claude" && ln -sf "${DATA_DIR}/claude" "${HOME_DIR}/.claude"
-    rm -rf "${HOME_DIR}/.config/claude-code" && mkdir -p "${HOME_DIR}/.config" && ln -sf "${DATA_DIR}/mcp" "${HOME_DIR}/.config/claude-code"
-    rm -rf "${HOME_DIR}/.ssh" && ln -sf "${DATA_DIR}/ssh" "${HOME_DIR}/.ssh"
-    rm -rf "${HOME_DIR}/.npm" && ln -sf "${DATA_DIR}/npm-cache" "${HOME_DIR}/.npm"
-    rm -rf "${HOME_DIR}/.venvs" && ln -sf "${DATA_DIR}/python-venvs" "${HOME_DIR}/.venvs"
+    # Directory symlinks (ln -sfn prevents creating link inside existing target dir)
+    mkdir -p "${HOME_DIR}/.config"
+    ln -sfn "${DATA_DIR}/workspace" "${HOME_DIR}/workspace"
+    ln -sfn "${DATA_DIR}/claude" "${HOME_DIR}/.claude"
+    ln -sfn "${DATA_DIR}/mcp" "${HOME_DIR}/.config/claude-code"
+    ln -sfn "${DATA_DIR}/ssh" "${HOME_DIR}/.ssh"
+    ln -sfn "${DATA_DIR}/npm-cache" "${HOME_DIR}/.npm"
+    ln -sfn "${DATA_DIR}/python-venvs" "${HOME_DIR}/.venvs"
+    ln -sfn "${DATA_DIR}/zsh-history" "${HOME_DIR}/.zsh_history_dir"
 
-    # Zsh history
-    rm -rf "${HOME_DIR}/.zsh_history_dir" && ln -sf "${DATA_DIR}/zsh-history" "${HOME_DIR}/.zsh_history_dir"
-    rm -f "${HOME_DIR}/.zsh_history" && ln -sf "${DATA_DIR}/zsh-history/.zsh_history" "${HOME_DIR}/.zsh_history"
+    # File symlinks (ln -sf is sufficient for files)
+    ln -sf "${DATA_DIR}/zsh-history/.zsh_history" "${HOME_DIR}/.zsh_history"
+    ln -sf "${DATA_DIR}/scripts/.zshrc" "${HOME_DIR}/.zshrc"
+    ln -sf "${DATA_DIR}/gitconfig" "${HOME_DIR}/.gitconfig"
 
-    # Zshrc from data/scripts (user can customize)
-    rm -f "${HOME_DIR}/.zshrc" && ln -sf "${DATA_DIR}/scripts/.zshrc" "${HOME_DIR}/.zshrc"
-
-    # Git config symlink
-    rm -f "${HOME_DIR}/.gitconfig" && ln -sf "${DATA_DIR}/gitconfig" "${HOME_DIR}/.gitconfig"
+    # Rclone config symlink
+    mkdir -p "${HOME_DIR}/.config/rclone"
+    ln -sf "${DATA_DIR}/rclone/rclone.conf" "${HOME_DIR}/.config/rclone/rclone.conf"
 
     log "Symlinks configured"
 }
@@ -394,7 +397,7 @@ install_custom_packages() {
             esac
 
             # Validate package name (alphanumeric, dash, underscore, dot only)
-            if ! echo "$line" | grep -qE '^[a-zA-Z0-9._-]+$'; then
+            if ! echo "$line" | grep -qE '^[a-zA-Z][a-zA-Z0-9._-]*$'; then
                 error "Invalid package name: $line"
                 error "Only alphanumeric characters, dash, underscore, and dot allowed"
                 exit 1
@@ -431,7 +434,7 @@ verify_claude() {
 
 # Setup SSH server (optional)
 setup_ssh() {
-    if [ -n "${ENABLE_SSH:-}" ]; then
+    if [ "${ENABLE_SSH:-}" = "true" ]; then
         # Persist SSH host keys across container rebuilds
         SSH_HOST_KEYS_DIR="${DATA_DIR}/ssh-host-keys"
         mkdir -p "${SSH_HOST_KEYS_DIR}"
@@ -453,10 +456,215 @@ setup_ssh() {
             fi
         done
 
-        chown -R "${PUID}:${PGID}" "${SSH_HOST_KEYS_DIR}"
+        chown root:root "${SSH_HOST_KEYS_DIR}"
+        chmod 700 "${SSH_HOST_KEYS_DIR}"
+        find "${SSH_HOST_KEYS_DIR}" -type f -name "*.pub" -exec chmod 644 {} \;
+        find "${SSH_HOST_KEYS_DIR}" -type f ! -name "*.pub" -exec chmod 600 {} \;
         log "Starting SSH server..."
         /usr/sbin/sshd || warn "Failed to start SSH server"
     fi
+}
+
+# Setup rclone remote mounts (optional)
+setup_rclone() {
+    if [ "${ENABLE_RCLONE:-false}" != "true" ]; then
+        return 0
+    fi
+
+    log "Setting up rclone remote mounts..."
+
+    # Create mountpoint base directory
+    mkdir -p /mounts/rclone
+    chown "${PUID}:${PGID}" /mounts/rclone
+
+    # Create default rclone config if missing
+    if [ ! -f "${DATA_DIR}/rclone/rclone.conf" ]; then
+        touch "${DATA_DIR}/rclone/rclone.conf"
+        chown "${PUID}:${PGID}" "${DATA_DIR}/rclone/rclone.conf"
+        log "Created empty rclone.conf"
+    fi
+    # Ensure rclone.conf is owner-only (contains credentials)
+    chmod 600 "${DATA_DIR}/rclone/rclone.conf"
+
+    # Create default automount.conf if missing
+    if [ ! -f "${DATA_DIR}/rclone/automount.conf" ]; then
+        cat > "${DATA_DIR}/rclone/automount.conf" << 'RCLONE_EOF'
+# ╔═══════════════════════════════════════════════════════════╗
+# ║           ClaudePantheon rclone Auto-Mount                ║
+# ╚═══════════════════════════════════════════════════════════╝
+#
+# Remotes listed here are mounted automatically on container start.
+# Format: remote_name:/path  [--vfs-cache-mode=MODE] [other rclone flags]
+# Lines starting with # are ignored. Blank lines are ignored.
+#
+# Examples:
+# gdrive:/Documents  --vfs-cache-mode=writes
+# s3bucket:/data     --vfs-cache-mode=minimal
+# mysftp:/home       --vfs-cache-mode=off
+#
+# Cache modes: off, minimal, writes, full
+# See: https://rclone.org/commands/rclone_mount/#vfs-file-caching
+RCLONE_EOF
+        chown "${PUID}:${PGID}" "${DATA_DIR}/rclone/automount.conf"
+        log "Created automount.conf template"
+    fi
+
+    # Check for FUSE device
+    if [ ! -c /dev/fuse ]; then
+        warn "FUSE device not available - rclone mounting disabled"
+        warn "Uncomment devices, cap_add, and apparmor:unconfined in docker-compose.yml"
+        return 0
+    fi
+
+    # Detect unclean shutdown (SIGKILL recovery)
+    RCLONE_PID_FILE="/tmp/rclone-supervisor.pid"
+    if [ -f "$RCLONE_PID_FILE" ]; then
+        _old_pid=$(cat "$RCLONE_PID_FILE" 2>/dev/null)
+        if [ -n "$_old_pid" ]; then
+            # Check if old PID is still running AND is actually our entrypoint process
+            # Use /proc/cmdline (NUL-delimited full command) for reliable identification
+            # /proc/comm is truncated to 15 chars and sh/ash are too generic
+            if [ -d "/proc/$_old_pid" ] && [ -f "/proc/$_old_pid/cmdline" ]; then
+                _old_cmdline=$(tr '\0' ' ' < "/proc/$_old_pid/cmdline" 2>/dev/null || true)
+                if [ -z "$_old_cmdline" ]; then
+                    # Empty cmdline: likely kernel thread or zombie after our entrypoint died
+                    # Safer to cleanup (false positive is harmless, false negative leaves stale mounts)
+                    warn "PID $_old_pid exists but cmdline empty (likely PID reused). Cleaning up rclone."
+                    pkill -9 -x rclone 2>/dev/null || true
+                    sleep 1
+                elif echo "$_old_cmdline" | grep -qF "entrypoint.sh"; then
+                    : # Still our process, no cleanup needed
+                else
+                    # PID reused by different process — treat as stale
+                    warn "Detected unclean shutdown (PID reused). Cleaning up rclone state..."
+                    pkill -9 -x rclone 2>/dev/null || true
+                    sleep 1
+                fi
+            elif ! kill -0 "$_old_pid" 2>/dev/null; then
+                # Process is dead — unclean shutdown
+                warn "Detected unclean shutdown (stale PID file). Cleaning up rclone state..."
+                pkill -9 -x rclone 2>/dev/null || true
+                sleep 1
+            fi
+        fi
+    fi
+    # Write current supervisor PID for next-startup detection
+    echo $$ > "$RCLONE_PID_FILE"
+
+    # Clean stale FUSE mounts (under lock to prevent races with cc-rmount)
+    RCLONE_LOCKFILE="/tmp/rclone-mount.lock"
+    _rclone_lock_held=false
+    exec 9>"$RCLONE_LOCKFILE"
+    if ! flock -w 10 9; then
+        exec 9>&-
+        warn "Could not acquire rclone mount lock — skipping stale cleanup and automount"
+    else
+        _rclone_lock_held=true
+        if [ -d /mounts/rclone ]; then
+            for mount_dir in /mounts/rclone/*/; do
+                [ -d "$mount_dir" ] || continue
+
+                # Skip if properly mounted
+                if mountpoint -q "$mount_dir" 2>/dev/null; then
+                    continue
+                fi
+
+                # Check if stale (stat fails on dead FUSE mount)
+                # Use timeout to prevent D-state hang on unresponsive FUSE
+                if ! timeout 3 stat "$mount_dir" >/dev/null 2>&1; then
+                    log "Cleaning stale mount: $mount_dir"
+                    fusermount -u "$mount_dir" 2>/dev/null || \
+                        fusermount -uz "$mount_dir" 2>/dev/null || true
+                    # Only rmdir if unmount succeeded and dir is empty
+                    if ! mountpoint -q "$mount_dir" 2>/dev/null; then
+                        rmdir "$mount_dir" 2>/dev/null || true
+                    fi
+                fi
+            done
+        fi
+    fi
+    # Keep fd 9 open — reused for automount below (same lock)
+
+    # Process automount.conf (only if lock is held — prevents race with cc-rmount)
+    if [ "$_rclone_lock_held" != "true" ]; then
+        warn "Skipping automount — no lock held"
+    elif [ -f "${DATA_DIR}/rclone/automount.conf" ]; then
+        _mount_success=0
+        _mount_total=0
+
+        while IFS= read -r line || [ -n "$line" ]; do
+            case "$line" in
+                \#*|"") continue ;;
+            esac
+
+            # Parse: first token is remote spec, rest is mount options
+            REMOTE_SPEC="${line%% *}"
+            MOUNT_OPTS="${line#"${REMOTE_SPEC}"}"
+            MOUNT_OPTS="${MOUNT_OPTS# }"  # trim leading space
+            # If line had no space, MOUNT_OPTS equals REMOTE_SPEC — clear it
+            [ "$MOUNT_OPTS" = "$REMOTE_SPEC" ] && MOUNT_OPTS=""
+
+            # Remote name is everything before first colon
+            REMOTE_NAME="${REMOTE_SPEC%%:*}"
+
+            if [ -z "$REMOTE_NAME" ]; then
+                continue
+            fi
+
+            # Validate remote name (alphanumeric, dash, underscore)
+            if ! echo "$REMOTE_NAME" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+                warn "Invalid remote name in automount.conf: ${REMOTE_NAME}"
+                continue
+            fi
+
+            # Validate mount options (whitelist: only allow safe rclone flag characters)
+            if [ -n "$MOUNT_OPTS" ] && ! echo "$MOUNT_OPTS" | grep -qE '^[a-zA-Z0-9=_./:@ -]*$'; then
+                warn "Unsafe characters in mount options for ${REMOTE_NAME}, skipping"
+                continue
+            fi
+
+            # Check remote exists in rclone config
+            if ! su -s /bin/sh "${USERNAME}" -c "rclone listremotes 2>/dev/null" | grep -qxF "${REMOTE_NAME}:"; then
+                warn "Remote '${REMOTE_NAME}' not found in rclone.conf, skipping"
+                continue
+            fi
+
+            MOUNT_PATH="/mounts/rclone/${REMOTE_NAME}"
+            mkdir -p "$MOUNT_PATH"
+            chown "${PUID}:${PGID}" "$MOUNT_PATH"
+
+            _mount_total=$((_mount_total + 1))
+            log "Auto-mounting rclone remote: ${REMOTE_SPEC} -> ${MOUNT_PATH}"
+            if timeout 30 su -s /bin/sh "${USERNAME}" -c "rclone mount \"${REMOTE_SPEC}\" \"${MOUNT_PATH}\" --daemon --allow-other ${MOUNT_OPTS}" 2>&1; then
+                # Verify mount succeeded (--daemon returns immediately)
+                sleep 2
+                if mountpoint -q "$MOUNT_PATH" 2>/dev/null; then
+                    log "Mounted: ${REMOTE_SPEC} -> ${MOUNT_PATH}"
+                    _mount_success=$((_mount_success + 1))
+                else
+                    warn "Mount command succeeded but mountpoint not active: ${REMOTE_SPEC}"
+                    # Kill orphaned rclone daemon for this failed mount
+                    # Use fixed-string grep to find exact PID, avoiding regex injection
+                    _orphan_pids=$(ps aux 2>/dev/null | grep -F "rclone mount" | grep -F -- "$MOUNT_PATH" | grep -v grep | awk '{print $2}')
+                    if [ -n "$_orphan_pids" ]; then
+                        echo "$_orphan_pids" | xargs kill 2>/dev/null || true
+                    fi
+                    rmdir "$MOUNT_PATH" 2>/dev/null || true
+                fi
+            else
+                warn "Failed to mount ${REMOTE_SPEC} (timed out or error)"
+            fi
+        done < "${DATA_DIR}/rclone/automount.conf"
+
+        if [ "$_mount_total" -gt 0 ]; then
+            log "Auto-mount summary: ${_mount_success}/${_mount_total} remotes mounted"
+        fi
+    fi
+
+    # Release lock (covers both stale cleanup and automount)
+    exec 9>&-
+
+    log "rclone setup complete"
 }
 
 # Start all services via start-services.sh
@@ -473,11 +681,7 @@ start_services() {
     export ENABLE_FILEBROWSER="${ENABLE_FILEBROWSER:-true}"
     export ENABLE_WEBDAV="${ENABLE_WEBDAV:-false}"
     export CLAUDE_BYPASS_PERMISSIONS="${CLAUDE_BYPASS_PERMISSIONS:-false}"
-
-    # Backward compatibility: TTYD_CREDENTIAL -> INTERNAL_CREDENTIAL
-    if [ -n "${TTYD_CREDENTIAL:-}" ] && [ -z "${INTERNAL_CREDENTIAL:-}" ]; then
-        export INTERNAL_CREDENTIAL="${TTYD_CREDENTIAL}"
-    fi
+    export ENABLE_RCLONE="${ENABLE_RCLONE:-false}"
 
     # Run start-services.sh as claude user
     exec su -s /bin/sh ${USERNAME} -c "${DATA_DIR}/scripts/start-services.sh"
@@ -512,6 +716,7 @@ main() {
 
     verify_claude
     setup_ssh
+    setup_rclone
 
     # Check for first run
     if [ ! -f "${DATA_DIR}/claude/.initialized" ]; then
