@@ -50,7 +50,7 @@
 
         .header {
             text-align: center;
-            margin-bottom: 2rem;
+            margin-bottom: 1rem;
         }
 
         .logo {
@@ -72,6 +72,34 @@
             letter-spacing: 0.05em;
         }
 
+        .title a {
+            color: var(--ctp-mauve);
+            text-decoration: none;
+        }
+
+        .title a:hover {
+            text-decoration: underline;
+            color: var(--ctp-lavender);
+        }
+
+        .blurb {
+            font-size: 0.95rem;
+            color: var(--ctp-subtext0);
+            max-width: 500px;
+            line-height: 1.5;
+            margin-bottom: 1.5rem;
+        }
+
+        .blurb a {
+            color: var(--ctp-sapphire);
+            text-decoration: none;
+        }
+
+        .blurb a:hover {
+            text-decoration: underline;
+            color: var(--ctp-blue);
+        }
+
         .error-code {
             font-size: 5rem;
             font-weight: 800;
@@ -84,7 +112,7 @@
         .error-message {
             font-size: 1.2rem;
             color: var(--ctp-subtext0);
-            margin-bottom: 2rem;
+            margin-bottom: 1.5rem;
         }
 
         .requested-path {
@@ -104,9 +132,9 @@
         /* Sections */
         .sections {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            grid-template-columns: repeat(3, 1fr);
             gap: 1.5rem;
-            max-width: 900px;
+            max-width: 960px;
             width: 100%;
             margin-bottom: 2rem;
         }
@@ -264,6 +292,16 @@
             font-size: 0.9rem;
         }
 
+        .footer-text a {
+            color: var(--ctp-sapphire);
+            text-decoration: none;
+        }
+
+        .footer-text a:hover {
+            text-decoration: underline;
+            color: var(--ctp-blue);
+        }
+
         .footer-credit {
             color: var(--ctp-overlay1);
             font-size: 0.8rem;
@@ -273,6 +311,10 @@
         @media (prefers-reduced-motion: reduce) {
             .logo { animation: none; }
             .home-btn { transition: none; }
+        }
+
+        @media (max-width: 900px) {
+            .sections { grid-template-columns: 1fr 1fr; }
         }
 
         @media (max-width: 600px) {
@@ -287,7 +329,8 @@
 
     <header class="header">
         <div class="logo" aria-hidden="true">&#x1f3db;&#xfe0f;</div>
-        <h1 class="title">ClaudePantheon</h1>
+        <h1 class="title"><a href="/">ClaudePantheon</a></h1>
+        <p class="blurb">A persistent, Docker-based Claude Code environment you can access from any device with a web browser. Terminal, file browser, WebDAV, and MCP integrations &mdash; all behind a single port.</p>
         <div class="error-code" aria-hidden="true">404</div>
         <p class="error-message">This path doesn't lead anywhere in the Pantheon.</p>
     </header>
@@ -328,28 +371,37 @@
             </ul>
         </div>
 
-        <!-- Environment Info -->
+        <!-- Connection Details -->
         <div class="card">
             <div class="card-header">
-                <span class="card-header-icon" aria-hidden="true">&#x2699;&#xfe0f;</span>
-                <span>Environment</span>
+                <span class="card-header-icon" aria-hidden="true">&#x1f310;</span>
+                <span>Connection Details</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Host</span>
                 <span class="info-value"><?php echo htmlspecialchars($_SERVER['HTTP_HOST'] ?? 'localhost'); ?></span>
             </div>
             <div class="info-row">
-                <span class="info-label">Server</span>
-                <span class="info-value"><?php echo htmlspecialchars($_SERVER['SERVER_SOFTWARE'] ?? 'nginx'); ?></span>
+                <span class="info-label">Port</span>
+                <span class="info-value"><?php echo htmlspecialchars($_SERVER['SERVER_PORT'] ?? '7681'); ?></span>
             </div>
             <div class="info-row">
-                <span class="info-label">PHP</span>
-                <span class="info-value"><?php echo htmlspecialchars(phpversion()); ?></span>
+                <span class="info-label">Protocol</span>
+                <span class="info-value"><?php echo (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'HTTPS' : 'HTTP'; ?></span>
             </div>
             <div class="info-row">
-                <span class="info-label">Platform</span>
-                <span class="info-value"><?php echo htmlspecialchars(php_uname('s') . ' ' . php_uname('m')); ?></span>
+                <span class="info-label">Your IP</span>
+                <span class="info-value"><?php echo htmlspecialchars($_SERVER['REMOTE_ADDR'] ?? 'unknown'); ?></span>
             </div>
+            <?php if (getenv('ENABLE_SSH') === 'true'): ?>
+            <div class="info-row">
+                <span class="info-label">SSH</span>
+                <span class="info-value active"><?php
+                    $host = explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0];
+                    echo htmlspecialchars("ssh claude@{$host} -p 2222");
+                ?></span>
+            </div>
+            <?php endif; ?>
             <div class="info-row">
                 <span class="info-label">FileBrowser</span>
                 <span class="info-value <?php echo getenv('ENABLE_FILEBROWSER') !== 'false' ? 'active' : 'inactive'; ?>">
@@ -360,12 +412,6 @@
                 <span class="info-label">WebDAV</span>
                 <span class="info-value <?php echo getenv('ENABLE_WEBDAV') === 'true' ? 'active' : 'inactive'; ?>">
                     <?php echo getenv('ENABLE_WEBDAV') === 'true' ? 'enabled' : 'disabled'; ?>
-                </span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">SSH</span>
-                <span class="info-value <?php echo getenv('ENABLE_SSH') === 'true' ? 'active' : 'inactive'; ?>">
-                    <?php echo getenv('ENABLE_SSH') === 'true' ? 'enabled (port 2222)' : 'disabled'; ?>
                 </span>
             </div>
         </div>
@@ -396,38 +442,6 @@
             </ul>
         </div>
 
-        <!-- Data Paths -->
-        <div class="card">
-            <div class="card-header">
-                <span class="card-header-icon" aria-hidden="true">&#x1f4c2;</span>
-                <span>Container Paths</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Workspace</span>
-                <span class="info-value">/app/data/workspace/</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Data</span>
-                <span class="info-value">/app/data/</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">MCP Config</span>
-                <span class="info-value">/app/data/mcp/</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Host Mounts</span>
-                <span class="info-value">/mounts/</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Logs</span>
-                <span class="info-value">/app/data/logs/</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Scripts</span>
-                <span class="info-value">/app/data/scripts/</span>
-            </div>
-        </div>
-
     </div>
 
     <a href="/" class="home-btn" aria-label="Go to home page">
@@ -436,7 +450,7 @@
     </a>
 
     <footer class="footer">
-        <p class="footer-text">Access Claude Code from any device with a web browser</p>
+        <p class="footer-text"><a href="https://github.com/RandomSynergy17/ClaudePantheon">GitHub</a> &middot; Access Claude Code from any device with a web browser</p>
         <p class="footer-credit">A RandomSynergy Production</p>
     </footer>
 
